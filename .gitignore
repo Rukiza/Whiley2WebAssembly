@@ -119,3 +119,7 @@ local.properties
 # Code Recommenders
 .recommenders/
 
+# Wasm and Wast output dir
+wasm/
+*.wasm
+*.wast
