@@ -20,7 +20,12 @@ public class WasmFileWriter {
 	private static final int FALSE = 0;
 
 	//Functions
+	private static final Map<String, List<Type>> paramMap = new HashMap<>();
+	private static final Map<String, List<Type>> returnMap = new HashMap<>();
 
+	//TYPES
+	private static final String INT = "i32";
+	private static final String BOOL = "i32";
 
 	private PrintStream output;
 	private StringBuilder wasmBuilder;
@@ -50,10 +55,15 @@ public class WasmFileWriter {
 					.append(")")
 					.append("\n");
 			write(d, 4);
+			paramMap.put(d.name(), d.type().params());
+			returnMap.put(d.name(), d.type().returns());
+
 		}
+
 
 		wasmBuilder.append(")");
 		output.println(wasmBuilder.toString());
+		//Needs to create file
 		PrintStream out = new PrintStream(new FileOutputStream("wasm/test.wast"));
 		out.print(wasmBuilder.toString());
 		out.close();
@@ -112,44 +122,6 @@ public class WasmFileWriter {
 
 
 
-	/*
-	private Map<CodeBlock.Index,Boolean> loadVerables(List<CodeBlock.Index> indices) {
-
-		Map<CodeBlock.Index, Boolean> variableMap = new HashMap<>();
-
-		for (CodeBlock.Index i: indices) {
-			variableMap.put(i, false);
-		}
-
-		return variableMap;
-	}
-	*/
-
-	/*
-	private void writeLocalVars(WyilFile.FunctionOrMethod functionOrMethod, int indent){
-
-		List<CodeBlock.Index> indices = functionOrMethod.body().indices();
-		int numOfParm = functionOrMethod.type().params().size();
-		int numOfRet = functionOrMethod.type().returns().size();
-
-
-		int i = numOfParm + numOfRet;
-		for ( ;i < indices.size(); i++) {
-			indent(indent);
-			output.println(functionOrMethod.body().indices());
-			wasmBuilder.append("(")
-					.append("local")
-					.append(" ")
-					.append("$")
-					.append(indices.get(i))
-					.append(" ")
-					.append("i32") //FIXME: Ints , floats, bool's.
-					.append(")")
-					.append("\n");
-		}
-
-	}
-	*/
 
 	private void writeParams(List<Type> params, List<Integer> variableList){
 		int i = 0;
@@ -161,7 +133,7 @@ public class WasmFileWriter {
 					.append("$")
 					.append(i)
 					.append(" ")
-					.append("i32") // FIXME: ints, floats, bool
+					.append(getType(param)) // FIXME: ints, floats, bool UPDATE: Fixed needs testing
 					.append(")");
 			variableList.add(i);
 		}
@@ -174,9 +146,8 @@ public class WasmFileWriter {
 					.append("(")
 					.append("result")
 					.append(" ")
-					.append("i32") //TODO: sort out if return type is not int
+					.append(getType(ret)) //TODO: sort out if return type is not int UPDATE: Fixed needs testing
 					.append(")");
-			//variableList.add();
 		}
 	}
 
@@ -268,25 +239,29 @@ public class WasmFileWriter {
 	}
 
 	private void write(Codes.Const c, int indent) {
-		/*
-		if (!variableList.contains(c.target())){
-			writeLocalVar(c, indent);
-			variableList.add(c.target());
-			//wasmBuilder.append(variableList);
-		}
-		*/
 		wasmBuilder.append("(")
 				.append("set_local")
 				.append(" ");
 
 		wasmBuilder.append("$")
 				.append(c.target())
-				.append(" ");
+				.append(" ")
+				.append("(");
 
 		if (c.constant.type().equals(Type.T_BOOL)) {
+			wasmBuilder.append("i32");
+			wasmBuilder.append(".const")
+					.append(" ");
+			if ("true".equals(c.constant.toString())) {
+				wasmBuilder.append(TRUE);
+			} else {
+				wasmBuilder.append(FALSE);
+			}
+			wasmBuilder.append(")");
 		}
 		if (c.constant.type().equals(Type.T_INT)) {
-			wasmBuilder.append("(i32.const") //TODO: Make it work with more than just ints
+			wasmBuilder.append("i32"); //TODO: Make it work with more than just ints
+			wasmBuilder.append(".const")
 					.append(" ")
 					.append(c.constant)
 					.append(")");
@@ -406,7 +381,8 @@ public class WasmFileWriter {
 					.append(")");
 		} else if (c.opcode() == Code.OPCODE_mul) {
 			wasmBuilder.append("(")
-					.append("i32.mul")
+					.append("i32")
+					.append(".mul")
 					.append(" ")
 					.append("(")
 					.append("get_local")
@@ -428,6 +404,10 @@ public class WasmFileWriter {
 				.append("\n");
 		//output.println("\t" + c);
 	}
+
+//	private void writeOperand(String ){
+//
+//	}
 
 	private void write(Codes.Return c, int indent) {
 		if (c.operands().length == 0){
@@ -485,6 +465,8 @@ public class WasmFileWriter {
 		}
 	}
 
+
+	//TODO: Remove un need calls.
 	private String writeVariable(CodeBlock d, List<Integer> variableList, int indent) {
 		StringBuilder localVars = new StringBuilder();
 		for (Code bytecode: d.bytecodes()) {
@@ -525,7 +507,7 @@ public class WasmFileWriter {
 			} else if (bytecode instanceof Codes.Invert) {
 
 			} else if (bytecode instanceof Codes.Invoke) {
-				//writeVariable((Codes.Invoke) bytecode, localVars);
+				writeVariable((Codes.Invoke) bytecode, variableList, localVars, indent);
 			}else if (bytecode instanceof Codes.Label) {
 				output.print("Label: ");
 			} else if (bytecode instanceof Codes.Lambda) {
@@ -561,42 +543,87 @@ public class WasmFileWriter {
 		return localVars.toString();
 	}
 
+	/**
+	 * Writes a local variable of an invocation call and adds it to the list of made vars if not there.
+	 * @param bytecode
+	 * @param variableList
+	 * @param localVars
+     * @param indent
+     */
+	private void writeVariable(Codes.Invoke bytecode, List<Integer> variableList, StringBuilder localVars, int indent) {
+		if (variableList.contains(bytecode.target(0))){
+			return;
+		}
+		else {
+			variableList.add(bytecode.target(0));
+		}
+		indent(localVars,indent);
+		List<Type> targets = returnMap.get(bytecode.name.name());
+
+		Type targetType = targets.get(0);
+
+		localVars.append(writeVariable(bytecode.target(0),getType(targetType)));
+	}
+
+	/**
+	 * Writes a local variable that is used in a constant call.
+	 * @param bytecode
+	 * @param variableList
+	 * @param localVars
+     * @param indent
+     */
 	private void writeVariable(Codes.Const bytecode, List<Integer> variableList, StringBuilder localVars, int indent) {
 		if (variableList.contains(bytecode.target(0))){
 			return;
 		}
-		indent(localVars,indent);
-		localVars.append("(")
-				.append("local")
-				.append(" ")
-				.append("$")
-				.append(bytecode.target())
-				.append(" ");
-		if (bytecode.constant.type().equals(Type.T_INT)) {
-			localVars.append("i32");
+		else {
+			variableList.add(bytecode.target(0));
 		}
-		localVars.append(")")
-				.append("\n");
+		indent(localVars,indent);
+		localVars.append(writeVariable(bytecode.target(),getType(bytecode.constant.type())));
 	}
 
+	/**
+	 * Looks at a list of variable if its not there will make the list variable and add it to the list.
+	 * @param bytecode
+	 * @param variableList
+	 * @param localVars
+     * @param indent
+     */
 	private void writeVariable(Codes.BinaryOperator bytecode, List<Integer> variableList, StringBuilder localVars, int indent){
 		if (variableList.contains(bytecode.target(0))){
 			return;
 		}
+		else {
+			variableList.add(bytecode.target(0));
+		}
 		indent(localVars,indent);
-		localVars.append("(")
+		//TODO:Work with all the types - assumption first is target type possible get type method.
+		localVars.append(writeVariable(bytecode.target(0),getType(bytecode.type(0))));
+	}
+
+	private String writeVariable(int target, String type) {
+		StringBuilder builder = new StringBuilder();
+		builder.append("(")
 				.append("local")
 				.append(" ")
 				.append("$")
-				.append(bytecode.target(0))
-				.append(" ");
-		//TODO:Work with all the types - assumption first is target type possible get type method.
-		if (bytecode.type(0).equals(Type.T_INT)){
-			localVars.append("i32");
-		}
-		localVars.append(")")
+				.append(target)
+				.append(" ")
+				.append(type)
+				.append(")")
 				.append("\n");
 
+		return builder.toString();
+	}
+
+	private String getType(Type t){
+		if (t.equals(Type.T_INT)) {
+			return INT;
+		} else if (t.equals(Type.T_BOOL)) {
+			return BOOL;
+		}
+		return "";
 	}
 
 	public static void main(String[] args) {
