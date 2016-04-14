@@ -3,6 +3,7 @@ package wywasm;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
@@ -26,6 +27,21 @@ public class WasmFileWriter {
 	//TYPES
 	private static final String INT = "i32";
 	private static final String BOOL = "i32";
+
+	//OPCODES
+	private static final String ADD = "add";
+	private static final String SUB = "sub";
+	private static final String DIV = "div_s";//TODO: Change when code changes.
+	private static final String MUL = "mul";
+	private static final String BITWISE_OR = "or";
+	private static final String BITWISE_XOR = "xor";
+	private static final String BITWISE_AND = "and";
+	private static final String REM = "rem_s";//TODO: Change when code changes.
+
+	//OPCODE EXTENSIONS
+	private static final String SIGNED = "_s";
+	private static final String UNSIGNED = "_u";
+	private static final String NO_EXTENTION = "";
 
 	private PrintStream output;
 	private StringBuilder wasmBuilder;
@@ -155,75 +171,44 @@ public class WasmFileWriter {
 		for(Code bytecode : c.bytecodes()) {
 			indent(indent);
 			if (bytecode instanceof Codes.ArrayGenerator){
-				output.print("ArrayGenerator: ");
 			} else if (bytecode instanceof Codes.Assert) {
-				output.print("Assert: ");
 			} else if (bytecode instanceof Codes.Assign) {
-				output.print("Assign: ");
 			} else if (bytecode instanceof Codes.Assume) {
-
 			} else if (bytecode instanceof Codes.BinaryOperator) {
 				write((Codes.BinaryOperator) bytecode, indent);
 			} else if (bytecode instanceof Codes.Const) {
 				write((Codes.Const) bytecode, indent);
 			} else if (bytecode instanceof Codes.Convert) {
-
 			} else if (bytecode instanceof Codes.Debug) {
-
 			} else if (bytecode instanceof Codes.Dereference) {
-
 			} else if (bytecode instanceof Codes.Fail) {
-
 			} else if (bytecode instanceof Codes.FieldLoad) {
-
 			} else if (bytecode instanceof Codes.Goto) {
-
 			} else if (bytecode instanceof Codes.If) {
-				output.print("If: ");
 			} else if (bytecode instanceof Codes.IfIs) {
-				output.print("IfIs: ");
 			} else if (bytecode instanceof Codes.IndexOf) {
-
 			} else if (bytecode instanceof Codes.IndirectInvoke) {
-
 			} else if (bytecode instanceof Codes.Invariant) {
-
 			} else if (bytecode instanceof Codes.Invert) {
-
 			} else if (bytecode instanceof Codes.Invoke) {
 				write((Codes.Invoke) bytecode, indent);
-			}else if (bytecode instanceof Codes.Label) {
-				output.print("Label: ");
+			} else if (bytecode instanceof Codes.Label) {
 			} else if (bytecode instanceof Codes.Lambda) {
-
 			} else if (bytecode instanceof Codes.LengthOf) {
-
 			} else if (bytecode instanceof Codes.Loop) {
-
 			} else if (bytecode instanceof Codes.Move) {
-
 			} else if (bytecode instanceof Codes.NewArray) {
-
 			} else if (bytecode instanceof Codes.NewObject) {
-
 			} else if (bytecode instanceof Codes.NewRecord) {
-
 			} else if (bytecode instanceof Codes.Nop) {
-
 			} else if (bytecode instanceof Codes.Not) {
-
 			} else if (bytecode instanceof Codes.Quantify) {
-
 			} else if (bytecode instanceof Codes.Return) {
 				write((Codes.Return) bytecode, indent);
 			} else if (bytecode instanceof Codes.Switch) {
-
 			} else if (bytecode instanceof Codes.UnaryOperator) {
-
 			} else if (bytecode instanceof Codes.Update) {
-
 			} else if (bytecode instanceof Codes.Void) {
-
 			}
 
 			if(bytecode instanceof Code.Compound) {
@@ -249,7 +234,7 @@ public class WasmFileWriter {
 				.append("(");
 
 		if (c.constant.type().equals(Type.T_BOOL)) {
-			wasmBuilder.append("i32");
+			wasmBuilder.append(getType(c.constant.type()));
 			wasmBuilder.append(".const")
 					.append(" ");
 			if ("true".equals(c.constant.toString())) {
@@ -258,9 +243,8 @@ public class WasmFileWriter {
 				wasmBuilder.append(FALSE);
 			}
 			wasmBuilder.append(")");
-		}
-		if (c.constant.type().equals(Type.T_INT)) {
-			wasmBuilder.append("i32"); //TODO: Make it work with more than just ints
+		}else {
+			wasmBuilder.append(getType(c.constant.type())); //TODO: Make it work with more than just ints
 			wasmBuilder.append(".const")
 					.append(" ")
 					.append(c.constant)
@@ -268,156 +252,34 @@ public class WasmFileWriter {
 		}
 		wasmBuilder.append(")")
 				.append("\n");
-		//output.println("\t" + c);
 	}
-
-	/**
-	 * Being used to make local variables.
-	 * @param c
-	 * @param indent
-     */
-	private void writeLocalVar(Codes.Const c, int indent) {
-		wasmBuilder.append("(")
-				.append("local")
-				.append(" ")
-				.append("$")
-				.append(c.target())
-				.append(" ");
-		if (c.constant.type().equals(Type.T_INT)) {
-			wasmBuilder.append("i32");
-		}
-		wasmBuilder.append(")")
-				.append("\n");
-		indent(indent);
-	}
-
-	private void writeLocalVar(Codes.BinaryOperator c, int indent) {
-		wasmBuilder.append("(")
-				.append("local")
-				.append(" ")
-				.append("$")
-				.append(c.target(0))
-				.append(" ");
-		output.println("TYPE:"+c.type(0));
-		//TODO:Work with all the types - assumption first is target type
-		if (c.type(0).equals(Type.T_INT)){
-			wasmBuilder.append("i32");
-		}
-		wasmBuilder.append(")")
-				.append("\n");
-		indent(indent);
-	}
-
 
 	private void write(Codes.BinaryOperator c, int indent) {
 		//TODO: add the ability to have more targets
-		//Dosent work currently.
-		/*
-		if (!variableList.contains(c.target(0))){
-			writeLocalVar(c, indent);
-			variableList.add(c.target(0));
-			//wasmBuilder.append(variableList);
-		}
-		*/
 		wasmBuilder.append("(")
 				.append("set_local")
 				.append(" ")
 				.append("$")
 				.append(c.target(0))//FIXME: May not be correct.
-				.append(" ");
-		if (c.opcode() == Code.OPCODE_add) { //TODO: Create method that make a i32.add or get_local / Set local
-			wasmBuilder.append("(")
-					.append("i32.add")
-					.append(" ")
-					.append("(")
-					.append("get_local")
-					.append(" ")
-					.append("$")
-					.append(c.operand(0))
-					.append(")")
-					.append(" ")
-					.append("(")
-					.append("get_local")
-					.append(" ")
-					.append("$")
-					.append(c.operand(1))
-					.append(")")
-					.append(")");
-		} else if (c.opcode() == Code.OPCODE_sub) {
-		wasmBuilder.append("(")
-					.append("i32.sub")
-					.append(" ")
-					.append("(")
-					.append("get_local")
-					.append(" ")
-					.append("$")
-					.append(c.operand(0))
-					.append(")")
-					.append(" ")
-					.append("(")
-					.append("get_local")
-					.append(" ")
-					.append("$")
-					.append(c.operand(1))
-					.append(")")
-					.append(")");
-		} else if (c.opcode() == Code.OPCODE_div) {
-			wasmBuilder.append("(")
-					.append("i32.div_s") //TODO: Work out if sign or unsigned is appropriate here.
-					.append(" ")
-					.append("(")
-					.append("get_local")
-					.append(" ")
-					.append("$")
-					.append(c.operand(0))
-					.append(")")
-					.append(" ")
-					.append("(")
-					.append("get_local")
-					.append(" ")
-					.append("$")
-					.append(c.operand(1))
-					.append(")")
-					.append(")");
-		} else if (c.opcode() == Code.OPCODE_mul) {
-			wasmBuilder.append("(")
-					.append("i32")
-					.append(".mul")
-					.append(" ")
-					.append("(")
-					.append("get_local")
-					.append(" ")
-					.append("$")
-					.append(c.operand(0))
-					.append(")")
-					.append(" ")
-					.append("(")
-					.append("get_local")
-					.append(" ")
-					.append("$")
-					.append(c.operand(1))
-					.append(")")
-					.append(")");
-
-		}
-		wasmBuilder.append(")")
+				.append(" ")
+				.append("(")
+				.append(getType(c.type(0)))
+				.append(".")
+				.append(getOp(c.opcode()))//FIXME: Add in the difference from int and float operand calls.
+				.append(" ")
+				.append(getGetLocal(c.operand(0)))
+				.append(" ")
+				.append(getGetLocal(c.operand(1)))
+				.append(")")
+				.append(")")
 				.append("\n");
 		//output.println("\t" + c);
 	}
 
-//	private void writeOperand(String ){
-//
-//	}
-
 	private void write(Codes.Return c, int indent) {
 		if (c.operands().length == 0){
 		} else {
-			wasmBuilder.append("(")
-					.append("get_local")
-					.append(" ")
-					.append("$")
-					.append(c.operand(0))
-					.append(")");
+			wasmBuilder.append(getGetLocal(c.operand(0)));
 		}
 		wasmBuilder.append("\n");
 		//output.println("\t" + c);
@@ -439,12 +301,7 @@ public class WasmFileWriter {
 				.append(c.name.name());
 		for (int operand: c.operands()) {
 			wasmBuilder.append(" ")
-					.append("(")
-					.append("get_local")
-					.append(" ")
-					.append("$")
-					.append(operand)
-					.append(")");
+					.append(getGetLocal(operand));
 		}
 		wasmBuilder.append(")")
 				.append(")")
@@ -452,6 +309,10 @@ public class WasmFileWriter {
 		//output.println("\t" + c);
 	}
 
+	/**
+	 * Indents the code.
+	 * @param indent
+     */
 	private void indent(int indent) {
 		for(int i=0;i!=indent;++i) {
 			output.print(" ");
@@ -459,6 +320,11 @@ public class WasmFileWriter {
 		}
 	}
 
+	/**
+	 * Indents a stringbuilder passed in.
+	 * @param builder
+	 * @param indent
+     */
 	private void indent(StringBuilder builder, int indent) {
 		for(int i=0;i!=indent;++i) {
 			builder.append(" ");
@@ -471,73 +337,42 @@ public class WasmFileWriter {
 		StringBuilder localVars = new StringBuilder();
 		for (Code bytecode: d.bytecodes()) {
 			if (bytecode instanceof Codes.ArrayGenerator){
-				output.print("ArrayGenerator: ");
 			} else if (bytecode instanceof Codes.Assert) {
-				output.print("Assert: ");
 			} else if (bytecode instanceof Codes.Assign) {
-				output.print("Assign: ");
 			} else if (bytecode instanceof Codes.Assume) {
-
 			} else if (bytecode instanceof Codes.BinaryOperator) {
 				writeVariable((Codes.BinaryOperator) bytecode, variableList, localVars, indent);
 			} else if (bytecode instanceof Codes.Const) {
 				writeVariable((Codes.Const) bytecode, variableList, localVars, indent);
 			} else if (bytecode instanceof Codes.Convert) {
-
 			} else if (bytecode instanceof Codes.Debug) {
-
 			} else if (bytecode instanceof Codes.Dereference) {
-
 			} else if (bytecode instanceof Codes.Fail) {
-
 			} else if (bytecode instanceof Codes.FieldLoad) {
-
 			} else if (bytecode instanceof Codes.Goto) {
-
 			} else if (bytecode instanceof Codes.If) {
-				output.print("If: ");
 			} else if (bytecode instanceof Codes.IfIs) {
-				output.print("IfIs: ");
 			} else if (bytecode instanceof Codes.IndexOf) {
-
 			} else if (bytecode instanceof Codes.IndirectInvoke) {
-
 			} else if (bytecode instanceof Codes.Invariant) {
-
 			} else if (bytecode instanceof Codes.Invert) {
-
 			} else if (bytecode instanceof Codes.Invoke) {
 				writeVariable((Codes.Invoke) bytecode, variableList, localVars, indent);
-			}else if (bytecode instanceof Codes.Label) {
-				output.print("Label: ");
+			} else if (bytecode instanceof Codes.Label) {
 			} else if (bytecode instanceof Codes.Lambda) {
-
 			} else if (bytecode instanceof Codes.LengthOf) {
-
 			} else if (bytecode instanceof Codes.Loop) {
-
 			} else if (bytecode instanceof Codes.Move) {
-
 			} else if (bytecode instanceof Codes.NewArray) {
-
 			} else if (bytecode instanceof Codes.NewObject) {
-
 			} else if (bytecode instanceof Codes.NewRecord) {
-
 			} else if (bytecode instanceof Codes.Nop) {
-
 			} else if (bytecode instanceof Codes.Not) {
-
 			} else if (bytecode instanceof Codes.Quantify) {
-
 			} else if (bytecode instanceof Codes.Switch) {
-
 			} else if (bytecode instanceof Codes.UnaryOperator) {
-
 			} else if (bytecode instanceof Codes.Update) {
-
 			} else if (bytecode instanceof Codes.Void) {
-
 			}
 		}
 		return localVars.toString();
@@ -602,6 +437,12 @@ public class WasmFileWriter {
 		localVars.append(writeVariable(bytecode.target(0),getType(bytecode.type(0))));
 	}
 
+	/**
+	 * TODO: Do a returns a valuing in the form "Bal"
+	 * @param target
+	 * @param type
+     * @return
+     */
 	private String writeVariable(int target, String type) {
 		StringBuilder builder = new StringBuilder();
 		builder.append("(")
@@ -617,6 +458,27 @@ public class WasmFileWriter {
 		return builder.toString();
 	}
 
+	/**
+	 * Constructes a local variable.
+	 * @param operand - operand used in constuction.
+	 * @return
+     */
+	private String getGetLocal (int operand) {
+		StringBuilder buider = new StringBuilder();
+		buider.append("(")
+				.append("get_local")
+				.append(" ")
+				.append("$")
+				.append(operand)
+				.append(")");
+		return buider.toString();
+	}
+
+	/**
+	 * TODO: Maby add to a map.
+	 * @param t
+	 * @return
+     */
 	private String getType(Type t){
 		if (t.equals(Type.T_INT)) {
 			return INT;
@@ -624,6 +486,27 @@ public class WasmFileWriter {
 			return BOOL;
 		}
 		return "";
+	}
+
+	/**
+	 * For getting op codes
+	 * TODO: Maby add to a map.
+	 * @param opcode
+	 * @return
+     */
+	private String getOp(int opcode) {
+		switch (opcode) {
+			case Code.OPCODE_mul:
+				return MUL;
+			case Code.OPCODE_add:
+				return ADD;
+			case Code.OPCODE_div:
+				return DIV;
+			case Code.OPCODE_sub:
+				return SUB;
+			default:
+				return "";
+		}
 	}
 
 	public static void main(String[] args) {
