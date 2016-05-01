@@ -1,18 +1,15 @@
 package wywasm;
 
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.PrintStream;
-import java.io.StringWriter;
+import java.io.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 
-import wyil.io.WyilFilePrinter;
+import ast.*;
+import util.WastFactory;
 import wyil.io.WyilFileReader;
 import wyil.lang.*;
-import wyil.util.AttributedCodeBlock;
 
 public class WasmFileWriter {
 
@@ -45,10 +42,12 @@ public class WasmFileWriter {
 
 	private PrintStream output;
 	private StringBuilder wasmBuilder;
+	private WastFactory factory;
 	
-	public WasmFileWriter(PrintStream output) {
+	public WasmFileWriter(PrintStream output, WastFactory factory) {
 		this.output = output;
 		wasmBuilder = new StringBuilder();
+		this.factory = factory;
 	}
 	
 	public void write(WyilFile file) throws IOException {
@@ -57,6 +56,8 @@ public class WasmFileWriter {
 				.append("\n");
 
 
+		List<ModuleElement.Export> exports = new ArrayList<>();
+		List<Function> functions = new ArrayList<>();
 		for(WyilFile.FunctionOrMethod d : file.functionOrMethods()) {
 			indent(4);
 			wasmBuilder.append("(")
@@ -70,19 +71,27 @@ public class WasmFileWriter {
 					.append(d.name())
 					.append(")")
 					.append("\n");
-			write(d, 4);
+			functions.add(write(d, 4));
+			exports.add(factory.createExport("\""+d.name()+"\"",factory.createVar("$"+d.name())));
 			paramMap.put(d.name(), d.type().params());
 			returnMap.put(d.name(), d.type().returns());
 
 		}
+
+		Module module = factory.createModule(null,functions,null,exports,null,null,null);
+
 
 
 		wasmBuilder.append(")");
 		output.println(wasmBuilder.toString());
 		//Needs to create file
 		PrintStream out = new PrintStream(new FileOutputStream("wasm/test.wast"));
+		BufferedOutputStream out2 = new BufferedOutputStream(new FileOutputStream("wasm/test2.wast"));
+		module.write(out2, 0);
+		out2.close();
 		out.print(wasmBuilder.toString());
 		out.close();
+
 	}
 	
 	/**
@@ -91,7 +100,7 @@ public class WasmFileWriter {
 	 * @param d
 	 * @throws IOException 
 	 */
-	private void write(WyilFile.FunctionOrMethod d, int indent) throws IOException {
+	private Function write(WyilFile.FunctionOrMethod d, int indent) throws IOException {
 		indent(indent);
 		wasmBuilder.append("(")
 				.append("func")
@@ -102,12 +111,14 @@ public class WasmFileWriter {
 		//Map<CodeBlock.Index, Boolean> variableMap = loadVerables(d.body().indices());
 		List<Integer> variableList = new ArrayList<>();
 
+		List<FunctionElement.Param> params = null;
 		if (!d.type().params().isEmpty()){
-			writeParams(d.type().params(), variableList);
+			params = writeParams(d.type().params(), variableList);
 		}
 
+		FunctionElement.Result result = null;
 		if (!d.type().returns().isEmpty()){
-			writeReturns(d.type().returns(), variableList);
+			result = writeReturns(d.type().returns(), variableList);
 		}
 
 		wasmBuilder.append("\n");
@@ -119,28 +130,29 @@ public class WasmFileWriter {
 		//local variables need to be set up at the start of each function
 		//Variable need to have a type at this stage
 		//Invoke/BinaryOperators/Const - need them.
+
+		List<FunctionElement.Local> locals = null;
 		if (d.body() != null) {
-			wasmBuilder.append(writeVariable(d.body(),variableList, indent +4));
+			locals = writeVariable(d.body(),variableList, indent +4);
 		}
 
 		output.print(d.name());
 		output.print(" ");
 		output.println(d.type());
+		List<Expr> exprs = null;
 		if(d.body() != null) {
-			write(d.body(), indent + 4);
+			exprs = write(d.body(), indent + 4);
 		}
 		indent(indent);
 		output.println();
 		wasmBuilder.append(")")
 				.append("\n");
+		return factory.createFunction("$"+d.name(), null, params, result, locals, exprs);
 	}
 
-
-
-
-
-	private void writeParams(List<Type> params, List<Integer> variableList){
+	private List<FunctionElement.Param> writeParams(List<Type> params, List<Integer> variableList){
 		int i = 0;
+		List<FunctionElement.Param> pars = new ArrayList<>();
 		for (Type param: params) {
 			wasmBuilder.append(" ")
 					.append("(")
@@ -152,11 +164,12 @@ public class WasmFileWriter {
 					.append(getType(param)) // FIXME: ints, floats, bool UPDATE: Fixed needs testing
 					.append(")");
 			variableList.add(i);
+			pars.add(factory.createParam("$"+i, factory.createExprType(getType(param))));
 		}
-
+		return pars;
 	}
 
-	private void writeReturns(List<Type> returns, List<Integer> variableList){
+	private FunctionElement.Result writeReturns(List<Type> returns, List<Integer> variableList){
 		for (Type ret: returns) {
 			wasmBuilder.append(" ")
 					.append("(")
@@ -165,55 +178,26 @@ public class WasmFileWriter {
 					.append(getType(ret)) //TODO: sort out if return type is not int UPDATE: Fixed needs testing
 					.append(")");
 		}
+		if (!returns.isEmpty()) {
+			return factory.createResult(factory.createExprType(getType(returns.get(0))));
+		} else {
+			return null; //Todo inform that this happens
+		}
 	}
 
-	private void write(CodeBlock c, int indent) {
+	private List<Expr> write(CodeBlock c, int indent) {
+		List<Expr> exprs = new ArrayList<>();
 		for(Code bytecode : c.bytecodes()) {
 			indent(indent);
-			if (bytecode instanceof Codes.ArrayGenerator){
-			} else if (bytecode instanceof Codes.Assert) {
-			} else if (bytecode instanceof Codes.Assign) {
-			} else if (bytecode instanceof Codes.Assume) {
-			} else if (bytecode instanceof Codes.BinaryOperator) {
-				write((Codes.BinaryOperator) bytecode, indent);
-			} else if (bytecode instanceof Codes.Const) {
-				write((Codes.Const) bytecode, indent);
-			} else if (bytecode instanceof Codes.Convert) {
-			} else if (bytecode instanceof Codes.Debug) {
-			} else if (bytecode instanceof Codes.Dereference) {
-			} else if (bytecode instanceof Codes.Fail) {
-			} else if (bytecode instanceof Codes.FieldLoad) {
-			} else if (bytecode instanceof Codes.Goto) {
-			} else if (bytecode instanceof Codes.If) {
-			} else if (bytecode instanceof Codes.IfIs) {
-			} else if (bytecode instanceof Codes.IndexOf) {
-			} else if (bytecode instanceof Codes.IndirectInvoke) {
-			} else if (bytecode instanceof Codes.Invariant) {
-			} else if (bytecode instanceof Codes.Invert) {
-			} else if (bytecode instanceof Codes.Invoke) {
-				write((Codes.Invoke) bytecode, indent);
-			} else if (bytecode instanceof Codes.Label) {
-			} else if (bytecode instanceof Codes.Lambda) {
-			} else if (bytecode instanceof Codes.LengthOf) {
-			} else if (bytecode instanceof Codes.Loop) {
-			} else if (bytecode instanceof Codes.Move) {
-			} else if (bytecode instanceof Codes.NewArray) {
-			} else if (bytecode instanceof Codes.NewObject) {
-			} else if (bytecode instanceof Codes.NewRecord) {
-			} else if (bytecode instanceof Codes.Nop) {
-			} else if (bytecode instanceof Codes.Not) {
-			} else if (bytecode instanceof Codes.Quantify) {
-			} else if (bytecode instanceof Codes.Return) {
-				write((Codes.Return) bytecode, indent);
-			} else if (bytecode instanceof Codes.Switch) {
-			} else if (bytecode instanceof Codes.UnaryOperator) {
-			} else if (bytecode instanceof Codes.Update) {
-			} else if (bytecode instanceof Codes.Void) {
+			Expr expr = write(bytecode, indent);
+			if (expr == null) {
+			}else {
+				exprs.add(expr);
 			}
 
 			if(bytecode instanceof Code.Compound) {
 				output.println("\t" + bytecode.getClass().getName() + " {");
-				write((Code.Compound) bytecode, indent+4);
+				write((CodeBlock) bytecode, indent+4);
 				output.println("}");
 			}
 			 else {
@@ -221,9 +205,54 @@ public class WasmFileWriter {
 			}
 
 		}
+		return exprs;
 	}
 
-	private void write(Codes.Const c, int indent) {
+	private Expr write(Code bytecode, int indent) {
+		if (bytecode instanceof Codes.ArrayGenerator){
+		} else if (bytecode instanceof Codes.Assert) {
+		} else if (bytecode instanceof Codes.Assign) {
+		} else if (bytecode instanceof Codes.Assume) {
+		} else if (bytecode instanceof Codes.BinaryOperator) {
+			return write((Codes.BinaryOperator) bytecode, indent);
+		} else if (bytecode instanceof Codes.Const) {
+			return write((Codes.Const) bytecode, indent);
+		} else if (bytecode instanceof Codes.Convert) {
+		} else if (bytecode instanceof Codes.Debug) {
+		} else if (bytecode instanceof Codes.Dereference) {
+		} else if (bytecode instanceof Codes.Fail) {
+		} else if (bytecode instanceof Codes.FieldLoad) {
+		} else if (bytecode instanceof Codes.Goto) {
+		} else if (bytecode instanceof Codes.If) {
+		} else if (bytecode instanceof Codes.IfIs) {
+		} else if (bytecode instanceof Codes.IndexOf) {
+		} else if (bytecode instanceof Codes.IndirectInvoke) {
+		} else if (bytecode instanceof Codes.Invariant) {
+		} else if (bytecode instanceof Codes.Invert) {
+		} else if (bytecode instanceof Codes.Invoke) {
+			return write((Codes.Invoke) bytecode, indent);
+		} else if (bytecode instanceof Codes.Label) {
+		} else if (bytecode instanceof Codes.Lambda) {
+		} else if (bytecode instanceof Codes.LengthOf) {
+		} else if (bytecode instanceof Codes.Loop) {
+		} else if (bytecode instanceof Codes.Move) {
+		} else if (bytecode instanceof Codes.NewArray) {
+		} else if (bytecode instanceof Codes.NewObject) {
+		} else if (bytecode instanceof Codes.NewRecord) {
+		} else if (bytecode instanceof Codes.Nop) {
+		} else if (bytecode instanceof Codes.Not) {
+		} else if (bytecode instanceof Codes.Quantify) {
+		} else if (bytecode instanceof Codes.Return) {
+			return write((Codes.Return) bytecode, indent);
+		} else if (bytecode instanceof Codes.Switch) {
+		} else if (bytecode instanceof Codes.UnaryOperator) {
+		} else if (bytecode instanceof Codes.Update) {
+		} else if (bytecode instanceof Codes.Void) {
+		}
+		throw new Error("Some error"); //TODO: Change that.
+	}
+
+	private Expr write(Codes.Const c, int indent) {
 		wasmBuilder.append("(")
 				.append("set_local")
 				.append(" ");
@@ -252,9 +281,35 @@ public class WasmFileWriter {
 		}
 		wasmBuilder.append(")")
 				.append("\n");
+		return factory.createSetLocal(factory.createVar("$"+c.target()),
+				factory.createConst(writeConstantType(c.constant.type()), writeConstantValue(c.constant)));
 	}
 
-	private void write(Codes.BinaryOperator c, int indent) {
+	private ExprElement.Type writeConstantType(Type type) {
+		if (type.equals(Type.T_INT)) {
+			return factory.createExprType(Expr.INT);
+		} else if (type.equals(Type.T_BOOL)) {
+			return factory.createExprType(Expr.INT);
+		}
+		//Todo throw error
+		throw new Error("Some error to be decided later.");
+	}
+
+	private ExprElement.Value writeConstantValue(Constant constant) {
+		if (constant.type().equals(Type.T_INT)) {
+			return factory.createValue(new Integer(constant.toString()));
+		} else if (constant.type().equals(Type.T_BOOL)) {
+			if ("true".equals(constant.toString())) {
+				return factory.createValue(TRUE);
+			} else {
+				return factory.createValue(FALSE);
+			}
+		}
+		//Todo throw error
+		throw new Error("Some error to be decided later.");
+	}
+
+	private Expr write(Codes.BinaryOperator c, int indent) {
 		//TODO: add the ability to have more targets
 		wasmBuilder.append("(")
 				.append("set_local")
@@ -274,18 +329,28 @@ public class WasmFileWriter {
 				.append(")")
 				.append("\n");
 		//output.println("\t" + c);
+		return factory.createSetLocal(
+				factory.createVar("$"+c.target(0)),
+				factory.createBinOp(factory.createExprType(getType(c.type(0))),
+						getOp(c.opcode()),
+						factory.createGetLocal(
+								factory.createVar("$"+c.operand(0))),
+						factory.createGetLocal(
+								factory.createVar("$"+c.operand(1)))));
 	}
 
-	private void write(Codes.Return c, int indent) {
+	private Expr write(Codes.Return c, int indent) {
 		if (c.operands().length == 0){
+			return null;
 		} else {
 			wasmBuilder.append(getGetLocal(c.operand(0)));
+			wasmBuilder.append("\n");
+			return factory.createGetLocal(
+					factory.createVar("$"+c.operand(0)));
 		}
-		wasmBuilder.append("\n");
-		//output.println("\t" + c);
 	}
 
-	private void write(Codes.Invoke c, int indent) {//TODO:Make it so that functions can call functions from other files.
+	private Expr write(Codes.Invoke c, int indent) {//TODO:Make it so that functions can call functions from other files.
 		output.println();
 
 		wasmBuilder.append("(")
@@ -299,14 +364,25 @@ public class WasmFileWriter {
 				.append(" ")
 				.append("$")
 				.append(c.name.name());
+		List<Expr> exprs = new ArrayList<>();
 		for (int operand: c.operands()) {
 			wasmBuilder.append(" ")
 					.append(getGetLocal(operand));
+			exprs.add(factory.createGetLocal(
+				factory.createVar("$"+operand)
+			));
 		}
 		wasmBuilder.append(")")
 				.append(")")
 				.append("\n");
 		//output.println("\t" + c);
+		return factory.createSetLocal(
+				factory.createVar("$"+c.target(0)),
+				factory.createCall(
+						factory.createVar("$"+ c.name.name()),
+						exprs
+				)
+		);
 	}
 
 	/**
@@ -333,17 +409,17 @@ public class WasmFileWriter {
 
 
 	//TODO: Remove un need calls.
-	private String writeVariable(CodeBlock d, List<Integer> variableList, int indent) {
-		StringBuilder localVars = new StringBuilder();
+	private List<FunctionElement.Local> writeVariable(CodeBlock d, List<Integer> variableList, int indent) {
+		List<FunctionElement.Local> locals = new ArrayList<>();
 		for (Code bytecode: d.bytecodes()) {
 			if (bytecode instanceof Codes.ArrayGenerator){
 			} else if (bytecode instanceof Codes.Assert) {
 			} else if (bytecode instanceof Codes.Assign) {
 			} else if (bytecode instanceof Codes.Assume) {
 			} else if (bytecode instanceof Codes.BinaryOperator) {
-				writeVariable((Codes.BinaryOperator) bytecode, variableList, localVars, indent);
+				locals.add(writeVariable((Codes.BinaryOperator) bytecode, variableList, indent));
 			} else if (bytecode instanceof Codes.Const) {
-				writeVariable((Codes.Const) bytecode, variableList, localVars, indent);
+				locals.add(writeVariable((Codes.Const) bytecode, variableList, indent));
 			} else if (bytecode instanceof Codes.Convert) {
 			} else if (bytecode instanceof Codes.Debug) {
 			} else if (bytecode instanceof Codes.Dereference) {
@@ -357,7 +433,7 @@ public class WasmFileWriter {
 			} else if (bytecode instanceof Codes.Invariant) {
 			} else if (bytecode instanceof Codes.Invert) {
 			} else if (bytecode instanceof Codes.Invoke) {
-				writeVariable((Codes.Invoke) bytecode, variableList, localVars, indent);
+				locals.add(writeVariable((Codes.Invoke) bytecode, variableList, indent));
 			} else if (bytecode instanceof Codes.Label) {
 			} else if (bytecode instanceof Codes.Lambda) {
 			} else if (bytecode instanceof Codes.LengthOf) {
@@ -375,7 +451,7 @@ public class WasmFileWriter {
 			} else if (bytecode instanceof Codes.Void) {
 			}
 		}
-		return localVars.toString();
+		return locals;
 	}
 
 	/**
@@ -385,19 +461,19 @@ public class WasmFileWriter {
 	 * @param localVars
      * @param indent
      */
-	private void writeVariable(Codes.Invoke bytecode, List<Integer> variableList, StringBuilder localVars, int indent) {
+	private FunctionElement.Local writeVariable(Codes.Invoke bytecode, List<Integer> variableList, int indent) {
 		if (variableList.contains(bytecode.target(0))){
-			return;
+			return null;
 		}
 		else {
 			variableList.add(bytecode.target(0));
 		}
-		indent(localVars,indent);
 		List<Type> targets = returnMap.get(bytecode.name.name());
 
 		Type targetType = targets.get(0);
 
-		localVars.append(writeVariable(bytecode.target(0),getType(targetType)));
+		return factory.createLocal("$"+bytecode.target(0),
+				factory.createExprType(getType(targetType)));
 	}
 
 	/**
@@ -407,15 +483,15 @@ public class WasmFileWriter {
 	 * @param localVars
      * @param indent
      */
-	private void writeVariable(Codes.Const bytecode, List<Integer> variableList, StringBuilder localVars, int indent) {
+	private FunctionElement.Local writeVariable(Codes.Const bytecode, List<Integer> variableList, int indent) {
 		if (variableList.contains(bytecode.target(0))){
-			return;
+			return null;
 		}
 		else {
 			variableList.add(bytecode.target(0));
 		}
-		indent(localVars,indent);
-		localVars.append(writeVariable(bytecode.target(),getType(bytecode.constant.type())));
+		return factory.createLocal("$"+bytecode.target(),
+				factory.createExprType(getType(bytecode.constant.type())));
 	}
 
 	/**
@@ -425,16 +501,16 @@ public class WasmFileWriter {
 	 * @param localVars
      * @param indent
      */
-	private void writeVariable(Codes.BinaryOperator bytecode, List<Integer> variableList, StringBuilder localVars, int indent){
+	private FunctionElement.Local writeVariable(Codes.BinaryOperator bytecode, List<Integer> variableList, int indent){
 		if (variableList.contains(bytecode.target(0))){
-			return;
+			return null;
 		}
 		else {
 			variableList.add(bytecode.target(0));
 		}
-		indent(localVars,indent);
 		//TODO:Work with all the types - assumption first is target type possible get type method.
-		localVars.append(writeVariable(bytecode.target(0),getType(bytecode.type(0))));
+		return factory.createLocal("$"+bytecode.target(0),
+				factory.createExprType(getType(bytecode.type(0))));
 	}
 
 	/**
@@ -485,7 +561,7 @@ public class WasmFileWriter {
 		} else if (t.equals(Type.T_BOOL)) {
 			return BOOL;
 		}
-		return "";
+		return ""; //TODO: throw a error
 	}
 
 	/**
@@ -514,7 +590,7 @@ public class WasmFileWriter {
 			// First, read the input file to generate WyilFile instance
 			WyilFile file = new WyilFileReader(args[0]).read();
 			// Second, pass WyilFile into wasm file writer
-			new WasmFileWriter(System.out).write(file);
+			new WasmFileWriter(System.out, new WastFactory.SWastFactory()).write(file);
 		} catch(IOException e) {
 			e.printStackTrace();
 		}
