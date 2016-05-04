@@ -20,6 +20,13 @@ public interface Expr extends FunctionElement {
     public static final String REM = "rem_s";//TODO: Change when code changes.
 
 
+    public static final String EQ = "eq";
+    public static final String NE = "ne";
+    public static final String LT = "lt_s";
+    public static final String LE = "le_s";
+    public static final String GT = "gt_s";
+    public static final String GE = "ge_s";
+
 
     public static final String INT = "i32";//TODO: Change when code changes.
 
@@ -88,7 +95,20 @@ public interface Expr extends FunctionElement {
 
         @Override
         public void write(BufferedOutputStream out, int indent) throws IOException {
-
+            indent(out, indent);
+            out.write("( block ".getBytes());
+            if (getName() != null) {
+                out.write(getName().getBytes());
+            }
+            out.write("\n".getBytes());
+            if (getExprs() != null) {
+                for (Expr e : getExprs()) {
+                    e.write(out, indent+4);
+                    out.write("\n".getBytes());
+                }
+            }
+            indent(out,indent);
+            out.write(")".getBytes());
         }
     }
 
@@ -223,12 +243,44 @@ public interface Expr extends FunctionElement {
 
         @Override
         public void write(BufferedOutputStream out) throws IOException {
-
         }
 
         @Override
         public void write(BufferedOutputStream out, int indent) throws IOException {
+            indent(out, indent);
+            out.write("( if ".getBytes());
+            if (getCondition() != null) {
+                getCondition().write(out);
+                out.write("\n".getBytes());
+            }
+            indent(out, indent+4);
+            out.write("( then".getBytes());
+            if (getThenLabel() != null) {
 
+            }
+            if (getThenExprs() != null) {
+                for (Expr expr: getThenExprs()) {
+                    out.write("\n".getBytes());
+                    expr.write(out, indent+8);
+                }
+                out.write(" )\n".getBytes());
+            }
+            if (getElseExprs() != null) {
+                indent(out, indent+4);
+                out.write("( else".getBytes());
+            }
+            if (getElseLabel() != null) {
+
+            }
+            if (getElseExprs() != null) {
+                for (Expr expr: getElseExprs()) {
+                    out.write("\n".getBytes());
+                    expr.write(out, indent+8);
+                }
+                out.write(" )\n".getBytes());
+            }
+            indent(out, indent);
+            out.write(")".getBytes());
         }
     }
 
@@ -260,12 +312,19 @@ public interface Expr extends FunctionElement {
 
         @Override
         public void write(BufferedOutputStream out) throws IOException {
-
+            out.write("( br ".getBytes());
+            getVar().write(out);
+            if (getExpr() != null) {
+                getExpr().write(out);
+                out.write(" ".getBytes());
+            }
+            out.write(" )".getBytes());
         }
 
         @Override
         public void write(BufferedOutputStream out, int indent) throws IOException {
-
+            indent(out, indent);
+            write(out);
         }
     }
 
@@ -830,19 +889,59 @@ public interface Expr extends FunctionElement {
     }
 
     abstract class RelOp implements Expr {
+        private final ExprElement.Type type;
+        private final String op;
+        private final Expr argOne;
+        private final Expr argTwo;
 
+        public RelOp(ExprElement.Type type, String op, Expr argOne, Expr argTwo) {
+            this.type = type;
+            this.op = op;
+            this.argOne = argOne;
+            this.argTwo = argTwo;
+        }
+
+        public ExprElement.Type getType() {
+            return type;
+        }
+
+        public String getOp() {
+            return op;
+        }
+
+        public Expr getArgOne() {
+            return argOne;
+        }
+
+        public Expr getArgTwo() {
+            return argTwo;
+        }
     }
 
     class SRelOp extends RelOp {
 
+        public SRelOp(ExprElement.Type type, String op, Expr argOne, Expr argTwo) {
+            super(type, op, argOne, argTwo);
+        }
+
         @Override
         public void write(BufferedOutputStream out) throws IOException {
-
+            //TODO:need to write this.
+            out.write("( ".getBytes());
+            getType().write(out);
+            out.write(".".getBytes());
+            out.write(getOp().getBytes());
+            out.write(" ".getBytes());
+            getArgOne().write(out);
+            out.write(" ".getBytes());
+            getArgTwo().write(out);
+            out.write(" )".getBytes());
         }
 
         @Override
         public void write(BufferedOutputStream out, int indent) throws IOException {
-
+            indent(out,indent);
+            write(out);
         }
     }
 

@@ -1,5 +1,7 @@
 package ast;
 
+import java.util.List;
+
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 
@@ -137,18 +139,60 @@ public interface ModuleElement extends Wast {
 
     public abstract class Memory implements ModuleElement {
 
+        private final Integer valueOne;
+        private final Integer valueTwo;
+        private final List<Segment> segments;
+
+        public Memory(Integer valueOne, Integer valueTwo, List<Segment> segments) {
+            this.valueOne = valueOne;
+            this.valueTwo = valueTwo;
+            this.segments = segments;
+        }
+
+        public Integer getValueOne() {
+            return valueOne;
+        }
+
+        public Integer getValueTwo() {
+            return valueTwo;
+        }
+
+        public List<Segment> getSegments() {
+            return segments;
+        }
     }
 
     public class SMemory extends Memory {
 
+        public SMemory(Integer valueOne, Integer valueTwo, List<Segment> segments) {
+            super(valueOne, valueTwo, segments);
+        }
+
         @Override
         public void write(BufferedOutputStream out) throws IOException {
+            out.write("( memory ".getBytes());
+            if (getValueOne() != null) {
+                out.write(getValueOne().toString().getBytes());
+                out.write(" ".getBytes());
+            }
+            if (getValueTwo() != null) {
+                out.write(getValueTwo().toString().getBytes());
+                out.write(" ".getBytes());
+            }
+            if (getSegments() != null) {
+                for (Segment s: getSegments()) {
+                    s.write(out);
+                    out.write(" ".getBytes());
 
+                }
+            }
+            out.write(")".getBytes());
         }
 
         @Override
         public void write(BufferedOutputStream out, int indent) throws IOException {
-
+            indent(out,indent);
+            write(out);
         }
     }
 

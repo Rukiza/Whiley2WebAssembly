@@ -123,3 +123,5 @@ local.properties
 wasm/
 *.wasm
 *.wast
+
+tests/valid/*.wyil

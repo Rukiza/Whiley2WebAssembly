@@ -21,6 +21,8 @@ public interface WastFactory {
 
     public ModuleElement.Export createExport (String string, ModuleElement.Memory memory);
 
+    public ModuleElement.Memory createMemory (Integer valueOne, Integer valueTwo, List<ModuleElement.Segment> segments);
+
     public Function createFunction (String name,
                                     FunctionElement.Type type,
                                     List<FunctionElement.Param> params,
@@ -76,6 +78,8 @@ public interface WastFactory {
 
     public Expr.BinOp createBinOp (ExprElement.Type type, String op, Expr argOne, Expr argTwo);
 
+    public Expr.RelOp createRelOp (ExprElement.Type type, String op, Expr argOne, Expr argTwo);
+
     public Expr.Unreachable createUnreachable ();
 
     //Missing some Expers that are not being used
@@ -116,6 +120,11 @@ public interface WastFactory {
         @Override
         public ModuleElement.Export createExport(String string, ModuleElement.Memory memory) {
             return new ModuleElement.SExport(string, memory);
+        }
+
+        @Override
+        public ModuleElement.Memory createMemory(Integer valueOne, Integer valueTwo, List<ModuleElement.Segment> segments) {
+            return new ModuleElement.SMemory(valueOne, valueTwo, segments);
         }
 
         @Override
@@ -236,6 +245,11 @@ public interface WastFactory {
         @Override
         public Expr.BinOp createBinOp(ExprElement.Type type, String op, Expr argOne, Expr argTwo) {
             return new Expr.SBinOp(type, op, argOne, argTwo);
+        }
+
+        @Override
+        public Expr.RelOp createRelOp(ExprElement.Type type, String op, Expr argOne, Expr argTwo) {
+            return new Expr.SRelOp(type, op, argOne, argTwo);
         }
 
         @Override
