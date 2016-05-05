@@ -1,10 +1,7 @@
 package wywasm;
 
 import java.io.*;
-import java.util.HashMap;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
+import java.util.*;
 
 import ast.*;
 import util.WastFactory;
@@ -44,12 +41,20 @@ public class WasmFileWriter {
 	private static final String BLOCK_NAME = "$START";
 	private static final String BASE_LABEL = "$BASE";
 
+	private static final Integer BASE_MEMORY_LOCATION = 0;
+	private static final Integer BASE_MEMORY_VALUE = 4;
+	private static final Integer BASE_MEMORY_INCORRECT_VALUE = 0;
+
+	private static final String DEFAULT_LABEL_NAME = "WASMLABEL";
+
 	private static final int START_MEMORY = 256;
 
 	private PrintStream output;
 	private WastFactory factory;
 	private Map<String, Integer> labelMap = new HashMap<>();
+	private WyilFile.FunctionOrMethod currentMethod;
 	private int labelNum = 0;
+	private int wasmLabelNumber = 0;
 
 	public WasmFileWriter(PrintStream output, WastFactory factory) {
 		this.output = output;
@@ -60,6 +65,7 @@ public class WasmFileWriter {
 		List<ModuleElement.Export> exports = new ArrayList<>();
 		List<Function> functions = new ArrayList<>();
 		for(WyilFile.FunctionOrMethod d : file.functionOrMethods()) {
+			currentMethod = d;
 			functions.add(write(d));
 			exports.add(factory.createExport("\""+d.name()+"\"",factory.createVar("$"+d.name())));
 			paramMap.put(d.name(), d.type().params());
@@ -130,12 +136,18 @@ public class WasmFileWriter {
 		if(d.body() != null) {
 			exprs = write(d.body(), 0);
 		}
+
+		//TODO think of a better way to do this.
+		//FIXME: It might be better to return -1.
+		if (exprs != null && !currentMethod.type().params().isEmpty()) {
+			exprs.add(factory.createUnreachable());
+		}
 		//indent(indent);
 		output.println();
 
 
 		System.out.println(exprs);
-		mainBlock.add(factory.createBlock(BLOCK_NAME, exprs));
+		mainBlock.add(factory.createLoop(null, BLOCK_NAME, exprs));
 
 
 		return factory.createFunction("$"+d.name(), null, params, result, locals, mainBlock);
@@ -146,7 +158,7 @@ public class WasmFileWriter {
 		List<FunctionElement.Param> pars = new ArrayList<>();
 		for (Type param: params) {
 			variableList.add(i);
-			pars.add(factory.createParam("$"+i, factory.createExprType(getType(param))));
+			pars.add(factory.createParam("$"+i++, factory.createExprType(getType(param))));
 		}
 		return pars;
 	}
@@ -217,13 +229,16 @@ public class WasmFileWriter {
 				exprs.add(write((Codes.If) bytecode));
 			} else if (bytecode instanceof Codes.IfIs) {
 			} else if (bytecode instanceof Codes.IndexOf) {
+				write((Codes.IndexOf) bytecode).forEach(exprs::add);
 			} else if (bytecode instanceof Codes.IndirectInvoke) {
 			} else if (bytecode instanceof Codes.Invariant) {
 			} else if (bytecode instanceof Codes.Invert) {
 			} else if (bytecode instanceof Codes.Invoke) {
 				exprs.add(write((Codes.Invoke) bytecode));
 			} else if (bytecode instanceof Codes.Label) {
-				if (!(prev instanceof Codes.Goto)) {
+				if (!(prev instanceof Codes.Goto) &&
+						!(prev instanceof Codes.Fail &&
+						!(prev instanceof Codes.Return))) { //TODO: Make appropriate method for this.
 					exprs.add(
 							factory.createSetLocal(
 									factory.createVar(PC),
@@ -238,6 +253,12 @@ public class WasmFileWriter {
 									)
 							)
 					);
+					exprs.add(
+							factory.createBr(
+									factory.createVar(BLOCK_NAME),
+									null
+							)
+					);
 				}
 				exprs = new ArrayList<>();
 				caseIf = createCase(exprs, labelMap.get(((Codes.Label) bytecode).label));
@@ -245,19 +266,23 @@ public class WasmFileWriter {
 				exprs = caseIf.getThenExprs();
 			} else if (bytecode instanceof Codes.Lambda) {
 			} else if (bytecode instanceof Codes.LengthOf) {
+				exprs.add(write((Codes.LengthOf) bytecode));
 			} else if (bytecode instanceof Codes.Loop) {
 				//write((Codes.Assert) bytecode).forEach(exprs::add);
 				codes.remove(bytecode);
 				Codes.Loop a = (Codes.Loop) bytecode;
-				int temp = i;
+				String label = getLabel();
+				codes.add(i, Codes.Label(label));
+				int temp = i+1;
 				for (int ii = 0; temp < codes.size() && ii < a.bytecodes().size(); temp++, ii++) {
 					codes.add(temp, a.bytecodes().get(ii));
 				}
 				i--;
-				codes.add(temp, null);
+				codes.add(temp, Codes.Goto(label));
 				continue;
 			} else if (bytecode instanceof Codes.Move) {
 			} else if (bytecode instanceof Codes.NewArray) {
+				write((Codes.NewArray) bytecode).forEach(exprs::add);
 			} else if (bytecode instanceof Codes.NewObject) {
 			} else if (bytecode instanceof Codes.NewRecord) {
 			} else if (bytecode instanceof Codes.Nop) {
@@ -292,15 +317,213 @@ public class WasmFileWriter {
 		return cases;
 	}
 
-	private Expr write(Codes.Assign c) {
+	private String getLabel() {
+		String label = DEFAULT_LABEL_NAME +(wasmLabelNumber++);
+		//labelMap.put(label, labelNum++);
+		return label;
+	}
+
+	private String createLabel() {
+
+		return null;
+	}
+
+	private Expr write(Codes.LengthOf bytecode) {
 		return factory.createSetLocal(
-				factory.createVar(
-						"$"+c.target(0)),
-				factory.createGetLocal(
-						factory.createVar("$"+c.operand(0)
+				factory.createVar("$"+bytecode.target(0)),
+				factory.createLoad(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						null,
+						factory.createGetLocal(
+								factory.createVar("$"+bytecode.operand(0))
+						) //TODO: Fix the implemtaion fo loops.
+				)
+		);
+	}
+
+	private List<Expr> write(Codes.IndexOf c) {
+		List<Expr> exprs = new ArrayList<>();
+
+		exprs.add(
+				factory.createSetLocal(
+						factory.createVar("$"+c.target(0)),
+						factory.createLoad(
+							factory.createExprType(Expr.INT), //TODO: extend for more types.
+							null,
+							null,
+							null,
+							factory.createBinOp(
+									factory.createExprType(Expr.INT), //TODO: Extend for more types.
+									Expr.add,
+									factory.createGetLocal(factory.createVar("$"+c.operand(0))),
+									factory.createBinOp(
+											factory.createExprType(Expr.INT), //TODO: Extend for more types.
+											Expr.mul,
+											factory.createConst(
+													factory.createExprType(Expr.INT),
+													factory.createValue(4)
+											),
+											factory.createBinOp(
+													factory.createExprType(getType(c.type(0).element())),
+													Expr.add,
+													factory.createGetLocal(
+															factory.createVar("$"+c.operand(1))
+													),
+													factory.createConst(
+															factory.createExprType(getType(c.type(0).element())),
+															factory.createValue(1))
+											)
+									)
+							)
 						)
 				)
 		);
+
+		return exprs;
+	}
+
+	private List<Expr> write(Codes.NewArray bytecode) {
+		List<Expr> exprs = new ArrayList<>();
+
+		List<Expr> then = new ArrayList<>();
+
+		then.add(
+				factory.createStore(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						factory.createConst(factory.createExprType(Expr.INT), factory.createValue(BASE_MEMORY_LOCATION)),
+						factory.createConst(factory.createExprType(Expr.INT), factory.createValue(BASE_MEMORY_VALUE))
+				)
+		);
+
+		exprs.add(
+				factory.createIf(
+						factory.createRelOp(
+								factory.createExprType(Expr.INT),
+								Expr.EQ,
+								factory.createConst(
+										factory.createExprType(Expr.INT),
+										factory.createValue(BASE_MEMORY_INCORRECT_VALUE)
+								),
+								factory.createLoad(
+										factory.createExprType(Expr.INT),
+										null,
+										null,
+										null,
+										factory.createConst(
+												factory.createExprType(Expr.INT),
+												factory.createValue(BASE_MEMORY_LOCATION)
+										)
+								)
+						),
+						null,
+						then,
+						null,
+						null
+				)
+		);
+
+		//TODO: make memory grow if the array make the size to big.
+
+		exprs.add( //Sets the local var to the pointer to array location.
+				factory.createSetLocal(
+						factory.createVar("$"+bytecode.target(0)),
+						factory.createLoad(
+								factory.createExprType(Expr.INT),
+								null,
+								null,
+								null,
+								factory.createConst(
+										factory.createExprType(Expr.INT),
+										factory.createValue(BASE_MEMORY_LOCATION)
+								)
+						)
+				)
+		);
+
+		System.out.println(bytecode.operands().length);
+
+		exprs.add(
+			factory.createStore(
+					factory.createExprType(Expr.INT),
+					null,
+					null,
+					factory.createLoad(
+							factory.createExprType(Expr.INT),
+							null,
+							null,
+							null,
+							factory.createConst(
+									factory.createExprType(Expr.INT),
+									factory.createValue(BASE_MEMORY_LOCATION)
+							)
+					),
+					factory.createConst(
+							factory.createExprType(Expr.INT),
+							factory.createValue(bytecode.operands().length)
+					)
+			)
+		);
+
+		for (int i = 0; i < bytecode.operands().length; i++) {
+			exprs.add(
+					factory.createStore(
+							factory.createExprType(Expr.INT),
+							(i+1)*4,
+							null,
+							factory.createLoad(
+									factory.createExprType(Expr.INT),
+									null,
+									null,
+									null,
+									factory.createConst(
+											factory.createExprType(Expr.INT),
+											factory.createValue(BASE_MEMORY_LOCATION)
+									)
+							),
+							factory.createConst(
+									factory.createExprType(Expr.INT),
+									factory.createValue(bytecode.operand(i))
+							)
+					)
+			);
+		}
+
+		exprs.add( //Sets the local var to the pointer to array location.
+				factory.createStore(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						factory.createConst(factory.createExprType(Expr.INT), factory.createValue(BASE_MEMORY_LOCATION)),
+						factory.createConst(factory.createExprType(Expr.INT), factory.createValue((bytecode.operands().length+1)*4))
+				)
+		);
+
+
+		return exprs;
+	}
+
+	private Expr write(Codes.Assign c) {
+//		if (c.type(0).equals(Type.T_ARRAY_ANY)) {
+//			return factory.createStore(
+//					factory.createExprType(INT),
+//					null,
+//					null,
+//					fact
+//			)
+//		} else {
+			return factory.createSetLocal(
+					factory.createVar(
+							"$" + c.target(0)),
+					factory.createGetLocal(
+							factory.createVar("$" + c.operand(0)
+							)
+					)
+			);
+//		}
 	}
 
 	private Expr write(Codes.If c) {
@@ -314,7 +537,9 @@ public class WasmFileWriter {
 						)
 				)
 		);
-		then.add(factory.createBr(factory.createVar(BLOCK_NAME), null));
+		then.add(factory.createBr(
+				factory.createVar(BLOCK_NAME),
+						null)); //TODO: Find a better way to fix up a branching statment.
 		return factory.createIf(factory.createRelOp(
 				factory.createExprType(Expr.INT),
 				getOp(c.opcode()),
@@ -361,6 +586,11 @@ public class WasmFileWriter {
 
 
 	private Expr write(Codes.Const c) {
+		//TODO: Add in some code for dealing with a constant array.
+		//Should include alot of code form new array.
+		//Should rather than using store loaded vars it should store constants
+		//But other than that the same code.
+		output.println(c);
 		return factory.createSetLocal(factory.createVar("$"+c.target()),
 				factory.createConst(writeConstantType(c.constant.type()), writeConstantValue(c.constant)));
 	}
@@ -370,8 +600,13 @@ public class WasmFileWriter {
 			return factory.createExprType(Expr.INT);
 		} else if (type.equals(Type.T_BOOL)) {
 			return factory.createExprType(Expr.INT);
+		} else if (type.equals(Type.T_ARRAY_ANY)) {
+			//TODO: Add in the create a constant array;
+			System.out.println("Should have made it here.");
+			return factory.createExprType(Expr.INT);
 		}
 		//Todo throw error
+		System.out.println(type);
 		throw new Error("Some error to be decided later.");
 	}
 
@@ -403,10 +638,10 @@ public class WasmFileWriter {
 
 	private Expr write(Codes.Return c) {
 		if (c.operands().length == 0){
-			return null;
+			return null;//TODO: add something in here for if the based on return values needed.
 		} else {
-			return factory.createGetLocal(
-					factory.createVar("$"+c.operand(0)));
+			return factory.createReturn(factory.createGetLocal(
+					factory.createVar("$"+c.operand(0))));
 		}
 	}
 
@@ -432,62 +667,96 @@ public class WasmFileWriter {
 	private List<FunctionElement.Local> writeVariable(CodeBlock d, List<Integer> variableList) {
 		List<FunctionElement.Local> locals = new ArrayList<>();
 		labelMap.put(BASE_LABEL, labelNum++);
-		for (Code bytecode: d.bytecodes()) {
-			List<FunctionElement.Local> local = writeVariable(bytecode, variableList);
-			local.forEach(locals::add);
+		int oldWasmLabelNumber = wasmLabelNumber;
+		List<Code> codes = new ArrayList<>(d.bytecodes());
+		for(int i = 0; i < codes.size(); i++) {
+			Code bytecode = codes.get(i);
+			if (bytecode instanceof Codes.ArrayGenerator) {
+			} else if (bytecode instanceof Codes.Assert) {
+				List<FunctionElement.Local> local = writeVariable((Codes.Assert) bytecode, variableList);
+				local.forEach(locals::add);
+				codes.remove(bytecode);
+				Codes.Assert a = (Codes.Assert) bytecode;
+				int temp = i;
+				for (int ii = 0; temp < codes.size() && ii < a.bytecodes().size(); temp++, ii++) {
+					codes.add(temp, a.bytecodes().get(ii));
+				}
+				i--;
+			} else if (bytecode instanceof Codes.Assign) {
+//				System.out.println(locals.size());
+//				System.out.println(variableList);
+				addToLocal(locals, writeVariable((Codes.Assign) bytecode, variableList));
+//				System.out.println(variableList);
+//				System.out.println(locals.size());
+			} else if (bytecode instanceof Codes.Assume) {
+//				List<FunctionElement.Local> local = writeVariable((Codes.Assume) bytecode, variableList);
+//				local.forEach(locals::add);
+				codes.remove(bytecode);
+				Codes.Assume a = (Codes.Assume) bytecode;
+				int temp = i;
+				for (int ii = 0; temp < codes.size() && ii < a.bytecodes().size(); temp++, ii++) {
+					codes.add(temp, a.bytecodes().get(ii));
+				}
+				i--;
+			} else if (bytecode instanceof Codes.BinaryOperator) {
+				addToLocal(locals, writeVariable((Codes.BinaryOperator) bytecode, variableList));
+			} else if (bytecode instanceof Codes.Const) {
+				addToLocal(locals, writeVariable((Codes.Const) bytecode, variableList));
+			} else if (bytecode instanceof Codes.Convert) {
+			} else if (bytecode instanceof Codes.Debug) {
+			} else if (bytecode instanceof Codes.Dereference) {
+			} else if (bytecode instanceof Codes.Fail) {
+			} else if (bytecode instanceof Codes.FieldLoad) {
+			} else if (bytecode instanceof Codes.Goto) {
+			} else if (bytecode instanceof Codes.If) {
+			} else if (bytecode instanceof Codes.IfIs) {
+			} else if (bytecode instanceof Codes.IndexOf) {
+				addToLocal(locals, writeVariable((Codes.IndexOf) bytecode, variableList));
+			} else if (bytecode instanceof Codes.IndirectInvoke) {
+			} else if (bytecode instanceof Codes.Invariant) {
+			} else if (bytecode instanceof Codes.Invert) {
+			} else if (bytecode instanceof Codes.Invoke) {
+				addToLocal(locals,writeVariable((Codes.Invoke) bytecode, variableList));
+			} else if (bytecode instanceof Codes.Label) {
+				if (!labelMap.containsKey(((Codes.Label) bytecode).label)) {
+					labelMap.put(((Codes.Label) bytecode).label, labelNum++);
+				}
+			} else if (bytecode instanceof Codes.Lambda) {
+			} else if (bytecode instanceof Codes.LengthOf) {
+				addToLocal(locals,writeVariable((Codes.LengthOf) bytecode, variableList));
+			} else if (bytecode instanceof Codes.Loop) {
+//				List<FunctionElement.Local> local = writeVariable((Codes.Loop) bytecode, variableList);
+//				local.forEach(locals::add)
+				codes.remove(bytecode);
+				Codes.Loop a = (Codes.Loop) bytecode;
+				String label = getLabel();
+				codes.add(i, Codes.Label(label));
+				int temp = i+1;
+				for (int ii = 0; temp < codes.size() && ii < a.bytecodes().size(); temp++, ii++) {
+					codes.add(temp, a.bytecodes().get(ii));
+				}
+				i--;
+				codes.add(temp, Codes.Goto(label));
+
+			} else if (bytecode instanceof Codes.Move) {
+			} else if (bytecode instanceof Codes.NewArray) {
+				addToLocal(locals, writeVariable((Codes.NewArray) bytecode, variableList));
+			} else if (bytecode instanceof Codes.NewObject) {
+			} else if (bytecode instanceof Codes.NewRecord) {
+			} else if (bytecode instanceof Codes.Nop) {
+			} else if (bytecode instanceof Codes.Not) {
+			} else if (bytecode instanceof Codes.Quantify) {
+			} else if (bytecode instanceof Codes.Switch) {
+			} else if (bytecode instanceof Codes.UnaryOperator) {
+			} else if (bytecode instanceof Codes.Update) {
+			}
 		}
+		wasmLabelNumber = oldWasmLabelNumber;
 		return locals;
 	}
 
 	private List<FunctionElement.Local> writeVariable(Code bytecode, List<Integer> variableList) {
 		List<FunctionElement.Local> locals = new ArrayList<>();
-		if (bytecode instanceof Codes.ArrayGenerator) {
-		} else if (bytecode instanceof Codes.Assert) {
-			List<FunctionElement.Local> local = writeVariable((Codes.Assert) bytecode, variableList);
-			local.forEach(locals::add);
-		} else if (bytecode instanceof Codes.Assign) {
-			addToLocal(locals, writeVariable((Codes.Assign) bytecode, variableList));
-		} else if (bytecode instanceof Codes.Assume) {
-			List<FunctionElement.Local> local = writeVariable((Codes.Assume) bytecode, variableList);
-			local.forEach(locals::add);
-		} else if (bytecode instanceof Codes.BinaryOperator) {
-			addToLocal(locals, writeVariable((Codes.BinaryOperator) bytecode, variableList));
-		} else if (bytecode instanceof Codes.Const) {
-			addToLocal(locals, writeVariable((Codes.Const) bytecode, variableList));
-		} else if (bytecode instanceof Codes.Convert) {
-		} else if (bytecode instanceof Codes.Debug) {
-		} else if (bytecode instanceof Codes.Dereference) {
-		} else if (bytecode instanceof Codes.Fail) {
-		} else if (bytecode instanceof Codes.FieldLoad) {
-		} else if (bytecode instanceof Codes.Goto) {
-		} else if (bytecode instanceof Codes.If) {
-		} else if (bytecode instanceof Codes.IfIs) {
-		} else if (bytecode instanceof Codes.IndexOf) {
-		} else if (bytecode instanceof Codes.IndirectInvoke) {
-		} else if (bytecode instanceof Codes.Invariant) {
-		} else if (bytecode instanceof Codes.Invert) {
-		} else if (bytecode instanceof Codes.Invoke) {
-			addToLocal(locals,writeVariable((Codes.Invoke) bytecode, variableList));
-		} else if (bytecode instanceof Codes.Label) {
-			if (!labelMap.containsKey(((Codes.Label) bytecode).label)) {
-				labelMap.put(((Codes.Label) bytecode).label, labelNum++);
-			}
-		} else if (bytecode instanceof Codes.Lambda) {
-		} else if (bytecode instanceof Codes.LengthOf) {
-		} else if (bytecode instanceof Codes.Loop) {
-			List<FunctionElement.Local> local = writeVariable((Codes.Loop) bytecode, variableList);
-			local.forEach(locals::add);
-		} else if (bytecode instanceof Codes.Move) {
-		} else if (bytecode instanceof Codes.NewArray) {
-		} else if (bytecode instanceof Codes.NewObject) {
-		} else if (bytecode instanceof Codes.NewRecord) {
-		} else if (bytecode instanceof Codes.Nop) {
-		} else if (bytecode instanceof Codes.Not) {
-		} else if (bytecode instanceof Codes.Quantify) {
-		} else if (bytecode instanceof Codes.Switch) {
-		} else if (bytecode instanceof Codes.UnaryOperator) {
-		} else if (bytecode instanceof Codes.Update) {
-		}
 		return locals;
 	}
 
@@ -507,6 +776,37 @@ public class WasmFileWriter {
 		return locals;
 	}
 
+	private FunctionElement.Local writeVariable(Codes.IndexOf bytecode, List<Integer> variableList) {
+		if (variableList.contains(bytecode.target(0))){
+			return null;
+		}
+		else {
+			variableList.add(bytecode.target(0));
+		}
+		return factory.createLocal("$"+bytecode.target(0),
+				factory.createExprType(getType(bytecode.type(0).element())));
+	}
+
+	private FunctionElement.Local writeVariable(Codes.LengthOf bytecode, List<Integer> variableList) {
+		if (variableList.contains(bytecode.target(0))) {
+			return null;
+		} else {
+			variableList.add(bytecode.target(0));
+		}
+		return factory.createLocal("$" + bytecode.target(0),
+				factory.createExprType(Expr.INT));
+	}
+
+	private FunctionElement.Local writeVariable(Codes.NewArray bytecode, List<Integer> variableList) {
+		if (variableList.contains(bytecode.target(0))) {
+			return null;
+		} else {
+			variableList.add(bytecode.target(0));
+		}
+		return factory.createLocal("$" + bytecode.target(0),
+				factory.createExprType(Expr.INT));
+	}
+
 	private FunctionElement.Local writeVariable(Codes.Assign bytecode, List<Integer> variableList) {
 		if (variableList.contains(bytecode.target(0))){
 			return null;
@@ -514,6 +814,8 @@ public class WasmFileWriter {
 		else {
 			variableList.add(bytecode.target(0));
 		}
+//		System.out.println("Handling assign"+bytecode.target(0));
+//		System.out.println(getType(bytecode.type(0)));
 		return factory.createLocal("$"+bytecode.target(0),
 				factory.createExprType(getType(bytecode.type(0))));
 	}
@@ -597,11 +899,15 @@ public class WasmFileWriter {
      */
 	private String getType(Type t){
 		if (t.equals(Type.T_INT)) {
-			return INT;
+			return Expr.INT;
 		} else if (t.equals(Type.T_BOOL)) {
 			return BOOL;
+		} else if (t.equals(Type.T_ARRAY_ANY)){
+			return Expr.INT;
+		} else if (t.equals(Type.T_ANY)) {
+			return Expr.INT;
 		}
-		return ""; //TODO: throw a error
+		return "i32"; //TODO: throw a error but returning in for the mine time due to more likely value.
 	}
 
 	/**

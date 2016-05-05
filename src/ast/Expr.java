@@ -132,7 +132,7 @@ public interface Expr extends FunctionElement {
             return nameTwo;
         }
 
-        private List<Expr> getExpers () {
+        public List<Expr> getExpers () {
             return expers;
         }
 
@@ -146,12 +146,28 @@ public interface Expr extends FunctionElement {
 
         @Override
         public void write(BufferedOutputStream out) throws IOException {
-
+            out.write("( loop ".getBytes());
+            if (getNameOne() != null) {
+                out.write(getNameOne().getBytes());
+                out.write(" ".getBytes());
+            }
+            if (getNameTwo() != null) {
+                out.write(getNameTwo().getBytes());
+                out.write(" ".getBytes());
+            }
         }
 
         @Override
         public void write(BufferedOutputStream out, int indent) throws IOException {
-
+            indent(out, indent);
+            write(out);
+            if (getExpers() != null ) {
+                out.write("\n" .getBytes());
+                new SBlock(null, getExpers()).write(out, indent + 4);
+                out.write("\n" .getBytes());
+            }
+            indent(out, indent);
+            out.write(")".getBytes());
         }
     }
 
@@ -442,7 +458,9 @@ public interface Expr extends FunctionElement {
 
         @Override
         public void write(BufferedOutputStream out) throws IOException {
+            out.write("( return ".getBytes());
             getExpr().write(out);
+            out.write(" )".getBytes());
         }
 
         @Override
@@ -685,12 +703,37 @@ public interface Expr extends FunctionElement {
 
         @Override
         public void write(BufferedOutputStream out) throws IOException {
+            out.write("( ".getBytes());
+            if (getType() != null) {
+                getType().write(out);
+            }
+            if (getSign() != null) {
+                out.write("_".getBytes());
+                out.write(getSign().getBytes());
+                out.write(" ".getBytes());
+            }
+            out.write(".load ".getBytes());
+            if (getOffset() != null) {
+                out.write(getOffset().toString().getBytes());
+                out.write(" ".getBytes());
+            }
+            if (getAlign() != null) {
+                out.write(getAlign().toString().getBytes());
+                out.write(" ".getBytes());
+            }
+            if (getExpr() != null) {
+                getExpr().write(out);
+                out.write(" ".getBytes());
+            }
+            out.write(")".getBytes());
+
 
         }
 
         @Override
         public void write(BufferedOutputStream out, int indent) throws IOException {
-
+            indent(out, indent);
+            write(out);
         }
     }
 
@@ -739,12 +782,37 @@ public interface Expr extends FunctionElement {
 
         @Override
         public void write(BufferedOutputStream out) throws IOException {
+            out.write("( ".getBytes());
+            if (getType() != null) {
+                getType().write(out);
+            }
+            out.write(".store ".getBytes());
+            if (getOffset() != null) {
+                out.write("offset=".getBytes());
+                out.write(getOffset().toString().getBytes());
+                out.write(" ".getBytes());
+            }
+            if (getAlign() != null) {
+                out.write("align=".getBytes());
+                out.write(getAlign().toString().getBytes());
+                out.write(" ".getBytes());
+            }
+            if (getLocation() != null) {
+                getLocation().write(out);
+                out.write(" ".getBytes());
+            }
+            if (getValue() != null) {
+                getValue().write(out);
+                out.write(" ".getBytes());
+            }
+            out.write(")".getBytes());
 
         }
 
         @Override
         public void write(BufferedOutputStream out, int indent) throws IOException {
-
+            indent(out, indent);
+            write(out);
         }
     }
 
