@@ -8,6 +8,8 @@ import util.WastFactory;
 import wyil.io.WyilFileReader;
 import wyil.lang.*;
 
+import javax.annotation.processing.SupportedSourceVersion;
+
 public class WasmFileWriter {
 
 	//Bool values.
@@ -326,6 +328,7 @@ public class WasmFileWriter {
 //		System.out.println(c);
 		System.out.println(c.key(0));
 		System.out.println(c.target(0));
+		System.out.println(c.operand(1));
 
 		return factory.createStore(
 				factory.createExprType(Expr.INT),
@@ -358,7 +361,7 @@ public class WasmFileWriter {
 						)
 				),
 				factory.createGetLocal(
-						factory.createVar("$"+c.operand(0))
+						factory.createVar("$"+c.operand(1))
 				)
 		);
 
@@ -569,14 +572,9 @@ public class WasmFileWriter {
 	}
 
 	private Expr write(Codes.Assign c) {
-//		if (c.type(0).equals(Type.T_ARRAY_ANY)) {
-//			return factory.createStore(
-//					factory.createExprType(INT),
-//					null,
-//					null,
-//					fact
-//			)
-//		} else {
+		if (isArray(c.type(0))) {
+			return writeAssignArray(c);
+		} else {
 			return factory.createSetLocal(
 					factory.createVar(
 							"$" + c.target(0)),
@@ -585,7 +583,228 @@ public class WasmFileWriter {
 							)
 					)
 			);
-//		}
+		}
+	}
+
+	private Expr writeAssignArray(Codes.Assign c) {
+		String label = getLabel();
+		String var = getVar();
+
+		System.out.println(c.operand(0));
+		System.out.println(c.target(0));
+
+		List<Expr> then = new ArrayList<>();
+
+
+		Expr.Store store = factory.createStore(
+				factory.createExprType(Expr.INT),
+				null,
+				null,
+				factory.createBinOp(
+						factory.createExprType(Expr.INT),
+						Expr.add,
+						factory.createGetLocal(
+								factory.createVar("$"+c.target(0))
+						),
+						factory.createBinOp(
+								factory.createExprType(Expr.INT),
+								Expr.mul,
+								factory.createGetLocal(
+										factory.createVar(var)
+								),
+								factory.createConst(
+										factory.createExprType(Expr.INT),
+										factory.createValue(4)
+								)
+						)
+				),
+				factory.createLoad(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						null,
+						factory.createBinOp(
+								factory.createExprType(Expr.INT),
+								Expr.add,
+								factory.createGetLocal(
+										factory.createVar("$"+c.operand(0))
+								),
+								factory.createBinOp(
+										factory.createExprType(Expr.INT),
+										Expr.mul,
+										factory.createGetLocal(
+												factory.createVar(var)
+										),
+										factory.createConst(
+												factory.createExprType(Expr.INT),
+												factory.createValue(4)
+										)
+								)
+						)
+
+				)
+		);
+
+		then.add(store);
+
+		Expr.SetLocal increament = factory.createSetLocal(
+				factory.createVar(var),
+				factory.createBinOp(
+						factory.createExprType(Expr.INT),
+						Expr.add,
+						factory.createGetLocal(
+								factory.createVar(var)
+						),
+						factory.createConst(
+								factory.createExprType(Expr.INT),
+								factory.createValue(1)
+						)
+				)
+		);
+
+		then.add(increament);
+
+		List<Expr> cont = new ArrayList<>();
+
+		cont.add(factory.createBr(factory.createVar("$"+label), null));
+
+		Expr.If loopContinue = factory.createIf(
+				factory.createRelOp(
+						factory.createExprType(Expr.INT),
+						Expr.LE,
+						factory.createGetLocal(
+								factory.createVar(var)
+						),
+						factory.createLoad(
+								factory.createExprType(Expr.INT),
+								null,
+								null,
+								null,
+								factory.createGetLocal(
+										factory.createVar("$"+c.target(0))
+								)
+						)
+				),
+				null,
+				cont,
+				null,
+				null
+		);
+
+		then.add(loopContinue);
+
+
+		Expr.SetLocal creatingVar = factory.createSetLocal(
+				factory.createVar(var),
+				factory.createConst(
+						factory.createExprType(Expr.INT),
+						factory.createValue(1)
+				)
+		);
+
+		Expr.Loop loop = factory.createLoop(null, "$"+label, then);
+
+		then = new ArrayList<>();
+
+		Expr.SetLocal setLocal = factory.createSetLocal(
+				factory.createVar("$"+c.target(0)),
+				factory.createLoad(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						null,
+						factory.createConst(
+								factory.createExprType(Expr.INT),
+								factory.createValue(BASE_MEMORY_LOCATION)
+						)
+				)
+		);
+
+		Expr.Store storeLength = factory.createStore(
+				factory.createExprType(Expr.INT),
+				null,
+				null,
+				factory.createGetLocal(
+						factory.createVar("$"+c.target(0))
+				),
+				factory.createLoad(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						null,
+						factory.createGetLocal(
+								factory.createVar("$"+c.operand(0))
+						)
+				)
+		);
+
+		then.add(setLocal);
+
+		then.add(creatingVar);
+		then.add(storeLength);
+		then.add(loop);
+
+		then.add( //Sets the local var to the pointer to array location.
+				factory.createStore(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						factory.createConst(factory.createExprType(Expr.INT), factory.createValue(BASE_MEMORY_LOCATION)),
+						factory.createBinOp(
+								factory.createExprType(Expr.INT),
+								Expr.add,
+								factory.createLoad(
+										factory.createExprType(Expr.INT),
+										null,
+										null,
+										null,
+										factory.createConst(factory.createExprType(Expr.INT), factory.createValue(BASE_MEMORY_LOCATION))
+								),
+								factory.createBinOp(
+										factory.createExprType(Expr.INT),
+										Expr.add,
+										factory.createLoad(
+												factory.createExprType(Expr.INT),
+												null,
+												null,
+												null,
+												factory.createConst(
+														factory.createExprType(Expr.INT),
+														factory.createValue(BASE_MEMORY_LOCATION)
+												)
+										),
+										factory.createBinOp(
+												factory.createExprType(Expr.INT),
+												Expr.mul,
+												factory.createConst(
+														factory.createExprType(Expr.INT),
+														factory.createValue(4)
+												),
+												factory.createBinOp(
+														factory.createExprType(Expr.INT),
+														Expr.add,
+														factory.createLoad(
+																factory.createExprType(Expr.INT),
+																null,
+																null,
+																null,
+																factory.createGetLocal(
+																		factory.createVar("$"+c.target(0))
+																)
+														),
+														factory.createConst(
+																factory.createExprType(Expr.INT),
+																factory.createValue(1)
+														)
+												)
+										)
+								)
+						)
+				)
+		);
+
+
+		return factory.createBlock(null, then);
 	}
 
 	private Expr write(Codes.If c) {
@@ -638,7 +857,7 @@ public class WasmFileWriter {
 		Expr.If secondIf = factory.createIf(
 				factory.createRelOp(
 						factory.createExprType(Expr.INT), //TODO: Fix this to work with more types.
-						getOp(c.opcode()),
+						Expr.EQ,
 						factory.createGetLocal(
 								factory.createVar(var)
 						),
@@ -661,6 +880,52 @@ public class WasmFileWriter {
 		then = new ArrayList<>();
 
 		then.add(secondIf);
+
+		Expr.SetLocal increament = factory.createSetLocal(
+				factory.createVar(var),
+				factory.createBinOp(
+						factory.createExprType(Expr.INT),
+						Expr.add,
+						factory.createGetLocal(
+								factory.createVar(var)
+						),
+						factory.createConst(
+								factory.createExprType(Expr.INT),
+								factory.createValue(1)
+						)
+				)
+		);
+
+		then.add(increament);
+
+		List<Expr> cont = new ArrayList<>();
+
+		cont.add(factory.createBr(factory.createVar("$"+label), null));
+
+		Expr.If loopContinue = factory.createIf(
+				factory.createRelOp(
+						factory.createExprType(Expr.INT),
+						Expr.LE,
+						factory.createGetLocal(
+								factory.createVar(var)
+						),
+						factory.createLoad(
+								factory.createExprType(Expr.INT),
+								null,
+								null,
+								null,
+								factory.createGetLocal(
+										factory.createVar("$"+c.operand(0))
+								)
+						)
+				),
+				null,
+				cont,
+				null,
+				null
+		);
+
+		then.add(loopContinue);
 
 		Expr.If firstIf = factory.createIf(
 				factory.createRelOp(
@@ -724,51 +989,6 @@ public class WasmFileWriter {
 		then = new ArrayList<>();
 		then.add(firstIf);
 
-		Expr.SetLocal increament = factory.createSetLocal(
-				factory.createVar(var),
-				factory.createBinOp(
-						factory.createExprType(Expr.INT),
-						Expr.add,
-						factory.createGetLocal(
-								factory.createVar(var)
-						),
-						factory.createConst(
-								factory.createExprType(Expr.INT),
-								factory.createValue(1)
-						)
-				)
-		);
-
-		then.add(increament);
-
-		List<Expr> cont = new ArrayList<>();
-
-		cont.add(factory.createBr(factory.createVar("$"+label), null));
-
-		Expr.If loopContinue = factory.createIf(
-				factory.createRelOp(
-						factory.createExprType(Expr.INT),
-						Expr.LE,
-						factory.createGetLocal(
-								factory.createVar(var)
-						),
-						factory.createLoad(
-								factory.createExprType(Expr.INT),
-								null,
-								null,
-								null,
-								factory.createGetLocal(
-										factory.createVar("$"+c.operand(1))
-								)
-						)
-				),
-				null,
-				cont,
-				null,
-				null
-		);
-
-		then.add(loopContinue);
 
 		Expr.SetLocal creatingVar = factory.createSetLocal(
 				factory.createVar(var),
@@ -1009,6 +1229,7 @@ public class WasmFileWriter {
 	}
 
 	private ExprElement.Type writeConstantType(Type type) {
+		System.out.println(type);
 		if (type.equals(Type.T_INT)) {
 			return factory.createExprType(Expr.INT);
 		} else if (type.equals(Type.T_BOOL)) {
@@ -1105,7 +1326,7 @@ public class WasmFileWriter {
 			} else if (bytecode instanceof Codes.Assign) {
 //				System.out.println(locals.size());
 //				System.out.println(variableList);
-				addToLocal(locals, writeVariable((Codes.Assign) bytecode, variableList));
+				writeVariable((Codes.Assign) bytecode, variableList).forEach(locals::add);
 //				System.out.println(variableList);
 //				System.out.println(locals.size());
 			} else if (bytecode instanceof Codes.Assume) {
@@ -1239,17 +1460,23 @@ public class WasmFileWriter {
 				factory.createExprType(Expr.INT));
 	}
 
-	private FunctionElement.Local writeVariable(Codes.Assign bytecode, List<Integer> variableList) {
+	private List<FunctionElement.Local> writeVariable(Codes.Assign bytecode, List<Integer> variableList) {
+		List<FunctionElement.Local> locals = new ArrayList<>();
+		if (isArray(bytecode.type(0))) {
+			getLabel();
+			locals.add(factory.createLocal(getVar(), factory.createExprType(Expr.INT)));
+		}
 		if (variableList.contains(bytecode.target(0))){
-			return null;
+			return locals;
 		}
 		else {
 			variableList.add(bytecode.target(0));
 		}
 //		System.out.println("Handling assign"+bytecode.target(0));
 //		System.out.println(getType(bytecode.type(0)));
-		return factory.createLocal("$"+bytecode.target(0),
-				factory.createExprType(getType(bytecode.type(0))));
+		locals.add(factory.createLocal("$"+bytecode.target(0),
+				factory.createExprType(getType(bytecode.type(0)))));
+		return locals;
 	}
 
 	@Deprecated
@@ -1376,6 +1603,8 @@ public class WasmFileWriter {
 				return DIV;
 			case Code.OPCODE_sub:
 				return SUB;
+			case Code.OPCODE_rem:
+				return REM;
 			case Code.OPCODE_ifeq:
 				return Expr.EQ;
 			case Code.OPCODE_ifne:
