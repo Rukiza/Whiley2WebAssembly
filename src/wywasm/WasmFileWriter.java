@@ -123,8 +123,6 @@ public class WasmFileWriter {
 			locals = writeVariable(d.body(),variableList);
 		}
 
-		wasmLabelNumber = 0;
-		wasmVarNumber = 0;
 		locals.add(factory.createLocal(PC, factory.createExprType(Expr.INT)));
 		List<Expr> mainBlock = new ArrayList<>();
 		mainBlock.add(
@@ -142,7 +140,9 @@ public class WasmFileWriter {
 		output.println(d.type());
 		List<Expr> exprs = null;
 		if(d.body() != null) {
+			reset();//TODO: Find a better way to go about this.
 			exprs = write(d.body(), 0);
+			reset();
 		}
 
 		//TODO think of a better way to do this.
@@ -1463,6 +1463,7 @@ public class WasmFileWriter {
 	private List<FunctionElement.Local> writeVariable(Codes.Assign bytecode, List<Integer> variableList) {
 		List<FunctionElement.Local> locals = new ArrayList<>();
 		if (isArray(bytecode.type(0))) {
+			System.out.println("Made");
 			getLabel();
 			locals.add(factory.createLocal(getVar(), factory.createExprType(Expr.INT)));
 		}
@@ -1620,6 +1621,11 @@ public class WasmFileWriter {
 			default:
 				return "";
 		}
+	}
+
+	public void reset() {
+		wasmLabelNumber = 0;
+		wasmVarNumber = 0;
 	}
 
 	public static void main(String[] args) {
