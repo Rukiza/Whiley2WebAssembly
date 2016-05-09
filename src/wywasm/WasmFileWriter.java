@@ -301,6 +301,7 @@ public class WasmFileWriter {
 				}
 			} else if (bytecode instanceof Codes.Switch) {
 			} else if (bytecode instanceof Codes.UnaryOperator) {
+				exprs.add(write((Codes.UnaryOperator) bytecode));
 			} else if (bytecode instanceof Codes.Update) {
 				exprs.add(write((Codes.Update) bytecode));
 			} else if (bytecode instanceof Codes.Void) {
@@ -324,8 +325,29 @@ public class WasmFileWriter {
 		return cases;
 	}
 
+	private Expr write(Codes.UnaryOperator c) {
+		if (c.opcode() == Code.OPCODE_neg) {
+			return factory.createSetLocal(
+					factory.createVar("$" + c.target(0)),
+					factory.createBinOp(
+							factory.createExprType(getType(c.type(0))),
+							Expr.mul,
+							factory.createConst(
+									factory.createExprType(Expr.INT),
+									factory.createValue(-1)
+							),
+							factory.createGetLocal(
+									factory.createVar("$" + c.operand(0))
+							)
+					)
+			);
+		} else {
+			throw new Error("No there unary operators handled."); //TODO: work out other options here.
+		}
+	}
+
 	private Expr write(Codes.Update c) {
-//		System.out.println(c);
+		System.out.println(c);
 		System.out.println(c.key(0));
 		System.out.println(c.target(0));
 		System.out.println(c.operand(1));
@@ -1324,14 +1346,8 @@ public class WasmFileWriter {
 				}
 				i--;
 			} else if (bytecode instanceof Codes.Assign) {
-//				System.out.println(locals.size());
-//				System.out.println(variableList);
 				writeVariable((Codes.Assign) bytecode, variableList).forEach(locals::add);
-//				System.out.println(variableList);
-//				System.out.println(locals.size());
 			} else if (bytecode instanceof Codes.Assume) {
-//				List<FunctionElement.Local> local = writeVariable((Codes.Assume) bytecode, variableList);
-//				local.forEach(locals::add);
 				codes.remove(bytecode);
 				Codes.Assume a = (Codes.Assume) bytecode;
 				int temp = i;
@@ -1390,6 +1406,7 @@ public class WasmFileWriter {
 			} else if (bytecode instanceof Codes.Quantify) {
 			} else if (bytecode instanceof Codes.Switch) {
 			} else if (bytecode instanceof Codes.UnaryOperator) {
+				addToLocal(locals, writeVariable((Codes.UnaryOperator) bytecode, variableList));
 			} else if (bytecode instanceof Codes.Update) {
 			}
 		}
@@ -1397,6 +1414,16 @@ public class WasmFileWriter {
 		return locals;
 	}
 
+	private FunctionElement.Local writeVariable(Codes.UnaryOperator bytecode, List<Integer> variableList) {
+		if (variableList.contains(bytecode.target(0))){
+			return null;
+		}
+		else {
+			variableList.add(bytecode.target(0));
+		}
+		return factory.createLocal("$"+bytecode.target(0),
+				factory.createExprType(getType(bytecode.type(0))));
+	}
 
 	private FunctionElement.Local writeVariable(Codes.If bytecode, List<Integer> variableList) {
 		if (isArray(bytecode.type(0))) {
@@ -1606,6 +1633,8 @@ public class WasmFileWriter {
 				return SUB;
 			case Code.OPCODE_rem:
 				return REM;
+			case Code.OPCODE_neg:
+				return Expr.NEG;
 			case Code.OPCODE_ifeq:
 				return Expr.EQ;
 			case Code.OPCODE_ifne:

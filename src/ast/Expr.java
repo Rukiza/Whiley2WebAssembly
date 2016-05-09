@@ -28,6 +28,9 @@ public interface Expr extends FunctionElement {
     public static final String GE = "ge_s";
 
 
+    public static final String NEG = "neg";
+
+
     public static final String INT = "i32";//TODO: Change when code changes.
 
 
@@ -890,12 +893,19 @@ public interface Expr extends FunctionElement {
 
         @Override
         public void write(BufferedOutputStream out) throws IOException {
-
+            out.write("( ".getBytes());
+            getType().write(out);
+            out.write(".".getBytes());
+            out.write(getOp().getBytes());
+            out.write(" ".getBytes());
+            getExpr().write(out);
+            out.write(" )".getBytes());
         }
 
         @Override
         public void write(BufferedOutputStream out, int indent) throws IOException {
-
+            indent(out, indent);
+            write(out);
         }
     }
 
