@@ -8,8 +8,6 @@ import util.WastFactory;
 import wyil.io.WyilFileReader;
 import wyil.lang.*;
 
-import javax.annotation.processing.SupportedSourceVersion;
-
 public class WasmFileWriter {
 
 	//Bool values.
@@ -54,6 +52,7 @@ public class WasmFileWriter {
 
 	private PrintStream output;
 	private WastFactory factory;
+	private Map<String, Integer> typeMap;
 	private Map<String, Integer> labelMap = new HashMap<>();
 	private WyilFile.FunctionOrMethod currentMethod;
 	private int labelNum = 0;
@@ -65,9 +64,11 @@ public class WasmFileWriter {
 	public WasmFileWriter(PrintStream output, WastFactory factory) {
 		this.output = output;
 		this.factory = factory;
+		this.typeMap = new HashMap<>();
 	}
 	
 	public void write(WyilFile file) throws IOException {
+		initializeTypeMap();
 		List<ModuleElement.Export> exports = new ArrayList<>();
 		List<Function> functions = new ArrayList<>();
 		for(WyilFile.FunctionOrMethod d : file.functionOrMethods()) {
@@ -92,6 +93,13 @@ public class WasmFileWriter {
 		out2.close();
 		out.close();
 
+	}
+
+	private void initializeTypeMap() {
+		typeMap.put("int", 0);
+		typeMap.put("bool", 1);
+
+		//FIXME: add types from the declaration of file.
 	}
 
 	/**
@@ -141,7 +149,7 @@ public class WasmFileWriter {
 		List<Expr> exprs = null;
 		if(d.body() != null) {
 			reset();//TODO: Find a better way to go about this.
-			exprs = write(d.body(), 0);
+			exprs = write(d.body());
 			reset();
 		}
 
@@ -179,7 +187,7 @@ public class WasmFileWriter {
 		}
 	}
 
-	private List<Expr> write(CodeBlock c, int caseCount) {
+	private List<Expr> write(CodeBlock c) {
 		List<Expr> cases = new ArrayList<>();
 		List<Expr> exprs = new ArrayList<>();
 
@@ -314,7 +322,7 @@ public class WasmFileWriter {
 
 			if(bytecode instanceof Code.Compound) {
 				output.println("\t" + bytecode.getClass().getName() + " {");
-				write((CodeBlock) bytecode, caseCount);
+				write((CodeBlock) bytecode);
 				output.println("}");
 			}
 			 else {
@@ -325,6 +333,7 @@ public class WasmFileWriter {
 		return cases;
 	}
 
+	//TODO: Change so it loads vaiables rather than gets local, and stores rather than sets local.
 	private Expr write(Codes.UnaryOperator c) {
 		if (c.opcode() == Code.OPCODE_neg) {
 			return factory.createSetLocal(
@@ -346,12 +355,8 @@ public class WasmFileWriter {
 		}
 	}
 
+	//TODO: Keep mostly the same, change how local varables are loaded if i choose to store references in the array.
 	private Expr write(Codes.Update c) {
-		System.out.println(c);
-		System.out.println(c.key(0));
-		System.out.println(c.target(0));
-		System.out.println(c.operand(1));
-
 		return factory.createStore(
 				factory.createExprType(Expr.INT),
 				null,
@@ -400,6 +405,7 @@ public class WasmFileWriter {
 		return var;
 	}
 
+	//TODO: argument is going to be moved allong 4 in the allignment maby 8 to store current type of elements
 	private Expr write(Codes.LengthOf bytecode) {
 		return factory.createSetLocal(
 				factory.createVar("$"+bytecode.target(0)),
@@ -415,6 +421,7 @@ public class WasmFileWriter {
 		);
 	}
 
+	//TODO: Same problem with refrencing as update, need to change how this is done.
 	private List<Expr> write(Codes.IndexOf c) {
 		List<Expr> exprs = new ArrayList<>();
 
@@ -459,6 +466,8 @@ public class WasmFileWriter {
 		return exprs;
 	}
 
+	//TODO: Need to change depending on how i will now handle arrays, refrencing could make it more complcated then it already is.
+	// Most likely keep the same and have a special case for arrays storing arrays.
 	private List<Expr> write(Codes.NewArray bytecode) {
 		List<Expr> exprs = new ArrayList<>();
 
@@ -593,6 +602,7 @@ public class WasmFileWriter {
 		return exprs;
 	}
 
+	//TODO: Will need to assign the stored values, rather than using local vars.
 	private Expr write(Codes.Assign c) {
 		if (isArray(c.type(0))) {
 			return writeAssignArray(c);
@@ -608,6 +618,7 @@ public class WasmFileWriter {
 		}
 	}
 
+	//TODO: Same as new array problem.
 	private Expr writeAssignArray(Codes.Assign c) {
 		String label = getLabel();
 		String var = getVar();
@@ -829,6 +840,7 @@ public class WasmFileWriter {
 		return factory.createBlock(null, then);
 	}
 
+	//TODO: If varables are being compared they will need to be loaded from the store.
 	private Expr write(Codes.If c) {
 		if (isArray(c.type(0))){
 			return writeArrayIf(c);
@@ -855,6 +867,7 @@ public class WasmFileWriter {
 		}
 	}
 
+	//TODO: Follow the new array loading conventions.
 	private Expr writeArrayIf(Codes.If c) {
 		String var = getVar();
 		String label = getLabel();
@@ -1061,7 +1074,7 @@ public class WasmFileWriter {
 		return factory.createBlock(null, cases);
 	}
 
-
+	//TODO: This will stay the same.
 	private List<Expr> write(Codes.Goto c) {
 		List<Expr> exprs = new ArrayList<>();
 
@@ -1098,9 +1111,8 @@ public class WasmFileWriter {
 		);
 	}
 
-
+	//TODO: update for the new refrencing system, store rather than set.
 	private Expr write(Codes.Const c) {
-		//TODO: Add in some code for dealing with a constant array.
 		//Should include alot of code form new array.
 		//Should rather than using store loaded vars it should store constants
 		//But other than that the same code.
@@ -1113,6 +1125,7 @@ public class WasmFileWriter {
 				factory.createConst(writeConstantType(c.constant.type()), writeConstantValue(c.constant)));
 	}
 
+	//TODO: Same as above funtion.
 	private Expr writeConstantArray(Codes.Const c) {
 		List<Expr> exprs = new ArrayList<>();
 
@@ -1173,10 +1186,7 @@ public class WasmFileWriter {
 				)
 		);
 
-//		System.out.println(c.constant);
 		Constant.Array array = (Constant.Array) c.constant;
-//		System.out.println(array.values.size());
-//		System.out.println(array.values.get(0).toString());
 
 
 		exprs.add(
@@ -1280,6 +1290,7 @@ public class WasmFileWriter {
 		throw new Error("Some error to be decided later.");
 	}
 
+	//TODO: Fix if refrencing changes.
 	private Expr write(Codes.BinaryOperator c) {
 		//TODO: add the ability to have more targets
 		return factory.createSetLocal(
@@ -1292,6 +1303,7 @@ public class WasmFileWriter {
 								factory.createVar("$"+c.operand(1)))));
 	}
 
+	//TODO: May need to load varables from heap
 	private Expr write(Codes.Return c) {
 		if (c.operands().length == 0){
 			return null;//TODO: add something in here for if the based on return values needed.
@@ -1301,6 +1313,7 @@ public class WasmFileWriter {
 		}
 	}
 
+	//TODO: May need to load varables from the heap.
 	private Expr write(Codes.Invoke c) {//TODO:Make it so that functions can call functions from other files.
 		//List<Type> parameterTypes = c.type(0).params();
 		List<Expr> exprs = new ArrayList<>();
@@ -1327,6 +1340,7 @@ public class WasmFileWriter {
 	}
 
 	//TODO: Remove un-need calls.
+	//TODO: Another plan, add a type variable in for each var.
 	private List<FunctionElement.Local> writeVariable(CodeBlock d, List<Integer> variableList) {
 		List<FunctionElement.Local> locals = new ArrayList<>();
 		labelMap.put(BASE_LABEL, labelNum++);
