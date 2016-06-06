@@ -385,7 +385,8 @@ public class WasmFileWriter {
 
 		exprs.add(createBaseAddressInit());
 		exprs.add(createPointerAssignment(b.target(0), b.type(0)));
-		exprs.add(createConstructLengthAssignment(b.operands().length));
+		exprs.add(createBaseAddressAssignment((b.operands().length+1)*8));
+		exprs.add(createConstructLengthAssignment(b.operands().length, getRecordMetaType(b.type(0)), b.target(0)));
 
 		for (int i = 0; i < b.operands().length; i++) {
 			exprs.add(
@@ -393,15 +394,8 @@ public class WasmFileWriter {
 							factory.createExprType(Expr.INT),
 							(i+1)*8,
 							null,
-							factory.createLoad(
-									factory.createExprType(Expr.INT),
-									null,
-									null,
-									null,
-									factory.createConst(
-											factory.createExprType(Expr.INT),
-											factory.createValue(BASE_MEMORY_LOCATION)
-									)
+							factory.createGetLocal(
+									factory.createVar("$"+b.target(0))
 							),
 							factory.createGetLocal(
 									factory.createVar("$"+b.operand(i)) // FIXME: 5/05/16 Could be problems here.
@@ -413,15 +407,8 @@ public class WasmFileWriter {
 							factory.createExprType(TYPE_VAR_TYPE),
 							((i+1)*8)+4,
 							null,
-							factory.createLoad(
-									factory.createExprType(Expr.INT),
-									null,
-									null,
-									null,
-									factory.createConst(
-											factory.createExprType(Expr.INT),
-											factory.createValue(BASE_MEMORY_LOCATION)
-									)
+							factory.createGetLocal(
+									factory.createVar("$"+b.target(0))
 							),
 							factory.createGetLocal(
 									factory.createVar("$"+TYPE_VAR_NAME+b.operand(i)) // FIXME: 5/05/16 Could be problems here.
@@ -430,9 +417,6 @@ public class WasmFileWriter {
 			);
 		}
 		//TODO: Make the record.
-
-
-		exprs.add(createBaseAddressAssignment((b.operands().length+1)*8));
 
 		return factory.createBlock(null ,exprs);
 	}
@@ -621,8 +605,16 @@ public class WasmFileWriter {
 				createPointerAssignment(bytecode.target(0), bytecode.type(0))
 		);
 
+		exprs.add( //Sets the local var to the pointer to array location.
+				createBaseAddressAssignment((bytecode.operands().length+1)*8)
+		);
+
 		//Loading in the length
-		exprs.add(createConstructLengthAssignment(bytecode.operands().length));
+		exprs.add(createConstructLengthAssignment(
+				bytecode.operands().length,
+				getMetaType(bytecode.type(0).element()),
+				bytecode.target(0)
+		));
 
 		for (int i = 0; i < bytecode.operands().length; i++) {
 			exprs.add(
@@ -630,15 +622,8 @@ public class WasmFileWriter {
 							factory.createExprType(Expr.INT),
 							(i+1)*8,
 							null,
-							factory.createLoad(
-									factory.createExprType(Expr.INT),
-									null,
-									null,
-									null,
-									factory.createConst(
-											factory.createExprType(Expr.INT),
-											factory.createValue(BASE_MEMORY_LOCATION)
-									)
+							factory.createGetLocal(
+									factory.createVar("$"+bytecode.target(0))
 							),
 							factory.createGetLocal(
 									factory.createVar("$"+bytecode.operand(i)) // FIXME: 5/05/16 Could be problems here.
@@ -650,15 +635,8 @@ public class WasmFileWriter {
 							factory.createExprType(WasmFileWriter.TYPE_VAR_TYPE),
 							((i+1)*8)+4,
 							null,
-							factory.createLoad(
-									factory.createExprType(Expr.INT),
-									null,
-									null,
-									null,
-									factory.createConst(
-											factory.createExprType(Expr.INT),
-											factory.createValue(BASE_MEMORY_LOCATION)
-									)
+							factory.createGetLocal(
+									factory.createVar("$"+bytecode.target(0))
 							),
 							factory.createGetLocal(
 									factory.createVar("$"+TYPE_VAR_NAME+bytecode.operand(i)) // FIXME: 5/05/16 Could be problems here.
@@ -666,11 +644,6 @@ public class WasmFileWriter {
 					)
 			);
 		}
-
-		exprs.add( //Sets the local var to the pointer to array location.
-				createBaseAddressAssignment((bytecode.operands().length+1)*8)
-		);
-
 
 		return exprs;
 	}
@@ -1441,7 +1414,15 @@ public class WasmFileWriter {
 
 		Constant.Array array = (Constant.Array) c.constant;
 
-		exprs.add(createConstructLengthAssignment(array.values.size()));
+		exprs.add( //Sets the local var to the pointer to array location.
+				createBaseAddressAssignment((array.values.size()+1)*8)
+		);
+
+		exprs.add(createConstructLengthAssignment(array.values.size(),
+				getMetaType(((Type.Array) c.constant.type()).element()),
+				c.target(0)
+		));
+
 
 		for (int i = 0; i < array.values.size(); i++) {
 			exprs.add(
@@ -1449,15 +1430,8 @@ public class WasmFileWriter {
 							factory.createExprType(Expr.INT),
 							(i+1)*8, //FIXME: Use a lambda or a function here.
 							null,
-							factory.createLoad(
-									factory.createExprType(Expr.INT),
-									null,
-									null,
-									null,
-									factory.createConst(
-											factory.createExprType(Expr.INT),
-											factory.createValue(BASE_MEMORY_LOCATION)
-									)
+							factory.createGetLocal(
+									factory.createVar("$"+c.target(0))
 							),
 							factory.createConst(
 									factory.createExprType(Expr.INT),
@@ -1467,9 +1441,6 @@ public class WasmFileWriter {
 			);
 		}
 
-		exprs.add( //Sets the local var to the pointer to array location.
-				createBaseAddressAssignment((array.values.size()+1)*8)
-		);
 
 		return factory.createBlock(null, exprs);
 	}
@@ -1804,30 +1775,37 @@ public class WasmFileWriter {
 
 	/**
 	 * Used for assigning the length of a list.
-	 * //TODO: Set up so that it stores types.
+	 *
 	 * @param length
 	 * @return
      */
-	private Expr createConstructLengthAssignment(int length) {
-		return factory.createStore(
+	private Expr createConstructLengthAssignment(int length, int type, int target) {
+		List<Expr> exprs = new ArrayList<>();
+		exprs.add( factory.createStore(
 				factory.createExprType(Expr.INT),
 				null,
 				null,
-				factory.createLoad(
-						factory.createExprType(Expr.INT),
-						null,
-						null,
-						null,
-						factory.createConst(
-								factory.createExprType(Expr.INT),
-								factory.createValue(BASE_MEMORY_LOCATION)
-						)
+				factory.createGetLocal(
+						factory.createVar("$"+target)
 				),
 				factory.createConst(
 						factory.createExprType(Expr.INT),
 						factory.createValue(length)
 				)
-		);
+		));
+		exprs.add( factory.createStore(
+				factory.createExprType(TYPE_VAR_TYPE),
+				(4),
+				null,
+				factory.createGetLocal(
+						factory.createVar("$"+target)
+				),
+				factory.createConst(
+						factory.createExprType(TYPE_VAR_TYPE),
+						factory.createValue(type)
+				)
+		));
+		return factory.createBlock(null, exprs);
 	}
 
 	/**
@@ -1949,6 +1927,8 @@ public class WasmFileWriter {
 	private Integer getMetaType(Type t) {
 		if (isArray(t)) {
 			return typeMap.get("array");
+		} else if (isRecord(t)){
+			return typeMap.get("record"); //TODO: Make a type name that cant be copyed.
 		} else { //TODO: Add record info here.
 			if (typeMap.containsKey(t.toString())) {
 				return typeMap.get(t.toString());
@@ -1958,6 +1938,17 @@ public class WasmFileWriter {
 				return typeMap.get(t.toString());
 			}
 		}
+	}
+
+	private Integer getRecordMetaType(Type t) {
+		if (typeMap.containsKey(t.toString())) {
+			return typeMap.get(t.toString());
+		}
+		else {
+			typeMap.put(t.toString(), typeNum++);
+			return typeMap.get(t.toString());
+		}
+
 	}
 
 	private boolean isArray(Type type) {
