@@ -717,6 +717,7 @@ public interface Expr extends FunctionElement {
             }
             out.write(".load ".getBytes());
             if (getOffset() != null) {
+                out.write("offset=".getBytes());
                 out.write(getOffset().toString().getBytes());
                 out.write(" ".getBytes());
             }

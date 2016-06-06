@@ -89,12 +89,11 @@ public class WasmFileWriter {
 			returnMap.put(d.name(), d.type().returns());
 
 		}
+		functions.add(createMemoryCopyHelperFunction());
 
 		ModuleElement.Memory memory = factory.createMemory(START_MEMORY, null, null);
 
 		Module module = factory.createModule(null,functions,null,exports,null, memory,null);
-
-
 
 		//Needs to create file
 		PrintStream out = new PrintStream(new FileOutputStream("wasm/test.wast"));
@@ -289,6 +288,7 @@ public class WasmFileWriter {
 					);
 				}
 				exprs = new ArrayList<>();
+//				System.out.println(labelMap);
 				caseIf = createCase(exprs, labelMap.get(((Codes.Label) bytecode).label));
 				cases.add(caseIf);
 				exprs = caseIf.getThenExprs();
@@ -652,13 +652,45 @@ public class WasmFileWriter {
 
 	//TODO: Will need to assign the stored values, rather than using local vars.
 	private Expr write(Codes.Assign c) {
+		List<Expr> exprs = new ArrayList<>();
 		if (isArray(c.type(0))) {
-			return writeAssignArray(c);
-//		} else if (isRecord(c.type(0))) {
-//			System.out.println();
+//			List<Expr> exprs = new ArrayList<>();
+			List<Expr> ops = new ArrayList<>();
+
+			ops.add(
+					factory.createGetLocal(
+							factory.createVar("$"+c.operand(0))
+					)
+			);
+
+			exprs.add(factory.createSetLocal(
+					factory.createVar(
+							"$" + c.target(0)),
+					factory.createCall(
+							factory.createVar("$DeepMemoryCopy"),
+							ops
+					)
+			));
+
+		} else if (isRecord(c.type(0))) {
+			List<Expr> ops = new ArrayList<>();
+
+			ops.add(
+					factory.createGetLocal(
+							factory.createVar("$"+c.operand(0))
+					)
+			);
+
+			exprs.add(factory.createSetLocal(
+					factory.createVar(
+							"$" + c.target(0)),
+					factory.createCall(
+							factory.createVar("$DeepMemoryCopy"),
+							ops
+					)
+			));
+
 		} else {
-			System.out.println("Assigning - "+ c.type(0));
-			List<Expr> exprs = new ArrayList<>();
 
 			exprs.add(factory.createSetLocal(
 					factory.createVar(
@@ -669,17 +701,16 @@ public class WasmFileWriter {
 					)
 			));
 
-			exprs.add(factory.createSetLocal(
-					factory.createVar(
-							"$"+TYPE_VAR_NAME+c.target(0)
-					),
-					factory.createConst(
-							factory.createExprType(WasmFileWriter.TYPE_VAR_TYPE),
-							factory.createValue(typeMap.get(c.type(0).toString()))
-					)
-			));
-			return factory.createBlock(null, exprs);
 		}
+		exprs.add(factory.createSetLocal(
+				factory.createVar(
+						"$"+TYPE_VAR_NAME+c.target(0)
+				),
+				factory.createGetLocal(
+						factory.createVar("$"+TYPE_VAR_NAME+c.operand(0))
+				)
+		));
+		return factory.createBlock(null, exprs);
 	}
 
 	//TODO: Same as new array problem.
@@ -1701,8 +1732,8 @@ public class WasmFileWriter {
 	private List<FunctionElement.Local> writeVariable(Codes.Assign bytecode, List<Integer> variableList) {
 		List<FunctionElement.Local> locals = new ArrayList<>();
 		if (isArray(bytecode.type(0))) {
-			getLabel();
-			locals.add(factory.createLocal(getVar(), factory.createExprType(Expr.INT)));
+//			getLabel();
+//			locals.add(factory.createLocal(getVar(), factory.createExprType(Expr.INT)));
 		}
 		if (!variableList.contains(bytecode.target(0))){
 			variableList.add(bytecode.target(0));
@@ -1819,7 +1850,7 @@ public class WasmFileWriter {
 								null,
 								null,
 								factory.createGetLocal(
-										factory.createVar("") //TODO: Organise parameter.
+										factory.createVar("$location")
 								)
 						)
 				)
@@ -1922,7 +1953,7 @@ public class WasmFileWriter {
 								(4),
 								null,
 								factory.createGetLocal(
-										factory.createVar("") //TODO: Organise parameter for this.
+										factory.createVar("$location") //TODO: Organise parameter for this.
 								)
 						)
 				)
@@ -1956,7 +1987,7 @@ public class WasmFileWriter {
 								factory.createExprType(Expr.INT),
 								Expr.add,
 								factory.createGetLocal(
-										factory.createVar("$newBase") //TODO: Parameter
+										factory.createVar("$newBase")
 								),
 								factory.createBinOp(
 										factory.createExprType(Expr.INT),
@@ -2204,7 +2235,7 @@ public class WasmFileWriter {
 								factory.createExprType(Expr.INT),
 								Expr.add,
 								factory.createGetLocal(
-										factory.createVar("$newBase") //TODO: Parameter
+										factory.createVar("$newBase")
 								),
 								factory.createBinOp(
 										factory.createExprType(Expr.INT),
