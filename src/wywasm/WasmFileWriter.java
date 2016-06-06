@@ -2,6 +2,7 @@ package wywasm;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.Exchanger;
 
 import ast.*;
 import util.WastFactory;
@@ -384,7 +385,7 @@ public class WasmFileWriter {
 		List<Expr> exprs = new ArrayList<>();
 
 		exprs.add(createBaseAddressInit());
-		exprs.add(createPointerAssignment(b.target(0), b.type(0)));
+		exprs.add(createPointerAssignment(b.target(0), getMetaType(b.type(0))));
 		exprs.add(createBaseAddressAssignment((b.operands().length+1)*8));
 		exprs.add(createConstructLengthAssignment(b.operands().length, getRecordMetaType(b.type(0)), b.target(0)));
 
@@ -602,7 +603,7 @@ public class WasmFileWriter {
 		//TODO: make memory grow if the array make the size to big.
 
 		exprs.add( //Sets the local var to the pointer to array location.
-				createPointerAssignment(bytecode.target(0), bytecode.type(0))
+				createPointerAssignment(bytecode.target(0), getMetaType(bytecode.type(0)))
 		);
 
 		exprs.add( //Sets the local var to the pointer to array location.
@@ -798,7 +799,7 @@ public class WasmFileWriter {
 
 		then = new ArrayList<>();
 
-		Expr setLocal = createPointerAssignment(c.target(0), c.type(0)); //Assigns the pointer.
+		Expr setLocal = createPointerAssignment(c.target(0), getMetaType(c.type(0))); //Assigns the pointer.
 
 		Expr.Store storeLength = factory.createStore( //Store the length.
 				factory.createExprType(Expr.INT),
@@ -1409,7 +1410,7 @@ public class WasmFileWriter {
 		//TODO: make memory grow if the array make the size to big.
 
 		exprs.add( //Sets the local var to the pointer to array location.
-				createPointerAssignment(c.target(0), c.constant.type())
+				createPointerAssignment(c.target(0), getMetaType(c.constant.type()))
 		);
 
 		Constant.Array array = (Constant.Array) c.constant;
@@ -1773,6 +1774,519 @@ public class WasmFileWriter {
 		return locals;
 	}
 
+
+	private Expr createMemoryCopy() { //TODO: Work out the parameters.
+		List<Expr> exprs = new ArrayList<>();
+		return factory.createBlock(null, exprs);
+	}
+
+	private Function createMemoryCopyHelperFunction() {
+		List<FunctionElement.Param> params = new ArrayList<>();
+		FunctionElement.Result result = factory.createResult(factory.createExprType(Expr.INT));
+		List<FunctionElement.Local> locals = new ArrayList<>();
+		List<Expr> mainBlock = new ArrayList<>();
+
+		// Work out what parameters are need.
+		params.add(
+				factory.createParam("$location", factory.createExprType(Expr.INT))
+		);
+
+		// Work out the local varables needed.
+		locals.add(
+				factory.createLocal("$length", factory.createExprType(Expr.INT))
+		);
+
+		locals.add(
+				factory.createLocal("$newBase", factory.createExprType(Expr.INT))
+		);
+
+		locals.add(
+				factory.createLocal("$inc", factory.createExprType(Expr.INT))
+		);
+
+		// Create the main block of code.
+
+		List<Expr> exprs = new ArrayList<>();
+
+		// Create a memory allocation of Size
+
+		exprs.add( //Loads the length for later use.
+				factory.createSetLocal(
+						factory.createVar("$length"),
+						factory.createLoad(
+								factory.createExprType(Expr.INT),
+								null,
+								null,
+								null,
+								factory.createGetLocal(
+										factory.createVar("") //TODO: Organise parameter.
+								)
+						)
+				)
+		);
+
+		exprs.add( //Stores the old location into a new storeage location.
+				factory.createSetLocal(
+						factory.createVar("$newBase"),
+						factory.createLoad(
+								factory.createExprType(Expr.INT),
+								null,
+								null,
+								null,
+								factory.createConst(
+										factory.createExprType(Expr.INT),
+										factory.createValue(BASE_MEMORY_LOCATION)
+								)
+						)
+				)
+		);
+
+		exprs.add( //Sets base to the point at a avalible memory location..
+				factory.createStore(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						factory.createConst(factory.createExprType(Expr.INT), factory.createValue(BASE_MEMORY_LOCATION)),
+						factory.createBinOp(
+								factory.createExprType(Expr.INT),
+								Expr.add,
+								factory.createLoad(
+										factory.createExprType(Expr.INT),
+										null,
+										null,
+										null,
+										factory.createConst(factory.createExprType(Expr.INT), factory.createValue(BASE_MEMORY_LOCATION))
+								),
+								factory.createBinOp(
+										factory.createExprType(Expr.INT),
+										Expr.add,
+										factory.createLoad(
+												factory.createExprType(Expr.INT),
+												null,
+												null,
+												null,
+												factory.createConst(
+														factory.createExprType(Expr.INT),
+														factory.createValue(BASE_MEMORY_LOCATION)
+												)
+										),
+										factory.createBinOp(
+												factory.createExprType(Expr.INT),
+												Expr.mul,
+												factory.createConst(
+														factory.createExprType(Expr.INT),
+														factory.createValue(8)
+												),
+												factory.createBinOp(
+														factory.createExprType(Expr.INT),
+														Expr.add,
+														factory.createGetLocal(
+																factory.createVar("$newBase")
+														),
+														factory.createConst(
+																factory.createExprType(Expr.INT),
+																factory.createValue(1)
+														)
+												)
+										)
+								)
+						)
+				)
+		);
+
+		exprs.add( //Stores the length.
+				factory.createStore(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						factory.createGetLocal(
+								factory.createVar("$newBase")
+						),
+						factory.createGetLocal(
+								factory.createVar("$length")
+						)
+				)
+		);
+
+		exprs.add(
+				factory.createStore(
+						factory.createExprType(Expr.INT),
+						(4),
+						null,
+						factory.createGetLocal(
+								factory.createVar("$newBase")
+						),
+						factory.createLoad(
+								factory.createExprType(Expr.INT),
+								null,
+								(4),
+								null,
+								factory.createGetLocal(
+										factory.createVar("") //TODO: Organise parameter for this.
+								)
+						)
+				)
+		);
+
+		// For each element check its type.
+
+		exprs.add( factory.createSetLocal(
+				factory.createVar("$inc"),
+				factory.createConst(
+						factory.createExprType(Expr.INT),
+						factory.createValue(1)
+				)
+		));
+
+		// If it is a pointer then recursively call this function.
+
+		List<Expr> then = new ArrayList<>();
+		List<Expr> andThen = new ArrayList<>();
+		List<Expr> alt = new ArrayList<>();
+		List<Expr> funParams = new ArrayList<>();
+		List<Expr> loopContents = new ArrayList<>();
+
+
+		andThen.add( // If its not equal to both then it will just copy the values.
+				factory.createStore(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						factory.createBinOp(
+								factory.createExprType(Expr.INT),
+								Expr.add,
+								factory.createGetLocal(
+										factory.createVar("$newBase") //TODO: Parameter
+								),
+								factory.createBinOp(
+										factory.createExprType(Expr.INT),
+										Expr.mul,
+										factory.createGetLocal(
+												factory.createVar("$inc")
+										),
+										factory.createConst(
+												factory.createExprType(Expr.INT),
+												factory.createValue(8)
+										)
+								)
+						),
+						factory.createLoad(
+								factory.createExprType(Expr.INT),
+								null,
+								null,
+								null,
+								factory.createBinOp(
+										factory.createExprType(Expr.INT),
+										Expr.add,
+										factory.createGetLocal(
+												factory.createVar("$location") //TODO: Parameter
+										),
+										factory.createBinOp(
+												factory.createExprType(Expr.INT),
+												Expr.mul,
+												factory.createGetLocal(
+														factory.createVar("$inc")
+												),
+												factory.createConst(
+														factory.createExprType(Expr.INT),
+														factory.createValue(8)
+												)
+										)
+								)
+						)
+				)
+		);
+
+
+		funParams.add( // Loads the location of the array to be copied.
+				factory.createLoad(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						null,
+						factory.createBinOp(
+								factory.createExprType(Expr.INT),
+								Expr.add,
+								factory.createGetLocal(
+										factory.createVar("$location") //TODO: Parameter
+								),
+								factory.createBinOp(
+										factory.createExprType(Expr.INT),
+										Expr.mul,
+										factory.createGetLocal(
+												factory.createVar("$inc")
+										),
+										factory.createConst(
+												factory.createExprType(Expr.INT),
+												factory.createValue(8)
+										)
+								)
+						)
+				)
+		);
+
+		alt.add( // Calls a function if equal to eather the array type or record type.
+				factory.createStore(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						factory.createBinOp(
+								factory.createExprType(Expr.INT),
+								Expr.add,
+								factory.createGetLocal(
+										factory.createVar("$newBase")
+								),
+								factory.createBinOp(
+										factory.createExprType(Expr.INT),
+										Expr.mul,
+										factory.createGetLocal(
+												factory.createVar("$inc")
+										),
+										factory.createConst(
+												factory.createExprType(Expr.INT),
+												factory.createValue(8)
+										)
+								)
+						),
+						factory.createCall(
+								factory.createVar("$DeepMemoryCopy"),
+								funParams
+						)
+
+				)
+		);
+
+		then.add( // Checks if its a record if its not then it will finally copy normally else it will recursive copy.
+				factory.createIf(
+						factory.createRelOp(
+								factory.createExprType(Expr.INT),
+								Expr.NE,
+								factory.createLoad(
+										factory.createExprType(Expr.INT),
+										null,
+										null,
+										null,
+										factory.createBinOp(
+												factory.createExprType(Expr.INT),
+												Expr.add,
+												factory.createGetLocal(
+														factory.createVar("$location") //TODO: Parameter
+												),
+												factory.createBinOp(
+														factory.createExprType(Expr.INT),
+														Expr.add,
+														factory.createBinOp(
+																factory.createExprType(Expr.INT),
+																Expr.mul,
+																factory.createGetLocal(
+																		factory.createVar("$inc")
+																),
+																factory.createConst(
+																		factory.createExprType(Expr.INT),
+																		factory.createValue(8)
+																)
+														),
+														factory.createConst(
+																factory.createExprType(Expr.INT),
+																factory.createValue(4)
+														)
+												)
+										)
+								),
+								factory.createConst(
+										factory.createExprType(Expr.INT),
+										factory.createValue(typeMap.get("record"))
+								)
+						),
+						null,
+						andThen,
+						null,
+						alt
+				)
+		);
+
+		loopContents.add( // Checks if the its not equal to a array. If is then recursive copy.
+				factory.createIf(
+						factory.createRelOp(
+								factory.createExprType(Expr.INT),
+								Expr.NE,
+								factory.createLoad(
+										factory.createExprType(Expr.INT),
+										null,
+										null,
+										null,
+										factory.createBinOp(
+												factory.createExprType(Expr.INT),
+												Expr.add,
+												factory.createGetLocal(
+														factory.createVar("$location") //TODO: Parameter
+												),
+												factory.createBinOp(
+														factory.createExprType(Expr.INT),
+														Expr.add,
+														factory.createBinOp(
+																factory.createExprType(Expr.INT),
+																Expr.mul,
+																factory.createGetLocal(
+																		factory.createVar("$inc")
+																),
+																factory.createConst(
+																		factory.createExprType(Expr.INT),
+																		factory.createValue(8)
+																)
+														),
+														factory.createConst(
+																factory.createExprType(Expr.INT),
+																factory.createValue(4)
+														)
+												)
+										)
+								),
+								factory.createConst(
+										factory.createExprType(Expr.INT),
+										factory.createValue(typeMap.get("array"))
+								)
+						),
+						null,
+						then,
+						null,
+						alt
+				)
+		);
+
+		// Store the returned pointer in the new location.
+
+		List<Expr> cont = new ArrayList<>();
+
+		cont.add(factory.createBr(factory.createVar("$loop"), null));
+
+		Expr.If loopContinue = factory.createIf( //Checks if it will loop again and then loops.
+				factory.createRelOp(
+						factory.createExprType(Expr.INT),
+						Expr.LE,
+						factory.createGetLocal(
+								factory.createVar("$inc")
+						),
+						factory.createGetLocal(
+								factory.createVar("$length")
+						)
+				),
+				null,
+				cont,
+				null,
+				null
+		);
+
+		// Else copy the value.
+
+		Expr.SetLocal increment = factory.createSetLocal( // Increments the i Varable.
+				factory.createVar("$inc"),
+				factory.createBinOp(
+						factory.createExprType(Expr.INT),
+						Expr.add,
+						factory.createGetLocal(
+								factory.createVar("$inc")
+						),
+						factory.createConst(
+								factory.createExprType(Expr.INT),
+								factory.createValue(1)
+						)
+				)
+		);
+		// Copy type values.
+
+		loopContents.add( // Copys the type from one place to another.
+				factory.createStore(
+						factory.createExprType(Expr.INT),
+						null,
+						null,
+						factory.createBinOp(
+								factory.createExprType(Expr.INT),
+								Expr.add,
+								factory.createGetLocal(
+										factory.createVar("$newBase") //TODO: Parameter
+								),
+								factory.createBinOp(
+										factory.createExprType(Expr.INT),
+										Expr.add,
+										factory.createBinOp(
+												factory.createExprType(Expr.INT),
+												Expr.mul,
+												factory.createGetLocal(
+														factory.createVar("$inc")
+												),
+												factory.createConst(
+														factory.createExprType(Expr.INT),
+														factory.createValue(8)
+												)
+										),
+										factory.createConst(
+												factory.createExprType(Expr.INT),
+												factory.createValue(4)
+										)
+								)
+						),
+						factory.createLoad(
+								factory.createExprType(Expr.INT),
+								null,
+								null,
+								null,
+								factory.createBinOp(
+										factory.createExprType(Expr.INT),
+										Expr.add,
+										factory.createGetLocal(
+												factory.createVar("$location") //TODO: Parameter
+										),
+										factory.createBinOp(
+												factory.createExprType(Expr.INT),
+												Expr.add,
+												factory.createBinOp(
+														factory.createExprType(Expr.INT),
+														Expr.mul,
+														factory.createGetLocal(
+																factory.createVar("$inc")
+														),
+														factory.createConst(
+																factory.createExprType(Expr.INT),
+																factory.createValue(8)
+														)
+												),
+												factory.createConst(
+														factory.createExprType(Expr.INT),
+														factory.createValue(4)
+												)
+										)
+								)
+						)
+				)
+		);
+
+		loopContents.add(increment);
+		loopContents.add(loopContinue);
+
+		// return the pointer value.
+
+		exprs.add(
+				factory.createLoop(
+						"$loop",
+						null,
+						loopContents
+				)
+		);
+
+		exprs.add(
+				factory.createReturn(
+						factory.createGetLocal(
+								factory.createVar("$newBase")
+						)
+				)
+		);
+
+		mainBlock.add(factory.createBlock(null, exprs));
+
+		return factory.createFunction("$DeepMemoryCopy", null, params, result, locals, mainBlock);
+	}
+
 	/**
 	 * Used for assigning the length of a list.
 	 *
@@ -1814,7 +2328,7 @@ public class WasmFileWriter {
 	 * @param type
      * @return
      */
-	private Expr createPointerAssignment(int target, Type type) {
+	private Expr createPointerAssignment(int target, int type) {
 		List<Expr> exprs = new ArrayList<>();
 		exprs.add(factory.createSetLocal(
 				factory.createVar("$"+target),
@@ -1835,7 +2349,7 @@ public class WasmFileWriter {
 						factory.createVar("$"+TYPE_VAR_NAME+target),
 						factory.createConst(
 								factory.createExprType(TYPE_VAR_TYPE),
-								factory.createValue(getMetaType(type)) //TODO: Sort out records here,
+								factory.createValue(type) //TODO: Sort out records here,
 						)
 				)
 		);
@@ -1953,18 +2467,6 @@ public class WasmFileWriter {
 
 	private boolean isArray(Type type) {
 		if (type instanceof Type.Array) {
-			return true;
-		}
-		if (type.equals(Type.Array(Type.T_INT, true))|| type.equals(Type.Array(Type.T_INT, false))) {
-			return true;
-		}
-		if (type.equals(Type.Array(Type.T_BOOL, true)) || type.equals(Type.Array(Type.T_BOOL, false))) {
-			return true;
-		}
-		if (type.equals(Type.Array(Type.T_ANY, true))|| type.equals(Type.Array(Type.T_ANY, false))) {
-			return true;
-		}
-		if (type.equals(Type.Array(Type.T_NULL, true))|| type.equals(Type.Array(Type.T_NULL, false))) {
 			return true;
 		}
 		return false;
