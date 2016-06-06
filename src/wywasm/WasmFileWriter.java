@@ -52,7 +52,7 @@ public class WasmFileWriter {
 	private static final String DEFAULT_LABEL_NAME = "WASMLABEL";
 	private static final String DEFAULT_VAR_NAME = "$WASMVAR";
 
-	private static final int START_MEMORY = 1024;
+	private static final int START_MEMORY = 4096;
 
 	private PrintStream output;
 	private WastFactory factory;
@@ -1822,7 +1822,7 @@ public class WasmFileWriter {
 				factory.createParam("$location", factory.createExprType(Expr.INT))
 		);
 
-		// Work out the local varables needed.
+		// Work out the local variables needed.
 		locals.add(
 				factory.createLocal("$length", factory.createExprType(Expr.INT))
 		);
@@ -1912,7 +1912,7 @@ public class WasmFileWriter {
 														factory.createExprType(Expr.INT),
 														Expr.add,
 														factory.createGetLocal(
-																factory.createVar("$newBase")
+																factory.createVar("$length")
 														),
 														factory.createConst(
 																factory.createExprType(Expr.INT),
