@@ -43,7 +43,6 @@ public class SFunction extends Function {
         }
         out.write("\n".getBytes());
         for (FunctionElement.Local local: getLocals()) {
-            System.out.println(local);
             local.write(out, indent+4);
             out.write("\n".getBytes());
         }

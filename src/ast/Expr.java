@@ -93,6 +93,18 @@ public interface Expr extends FunctionElement {
 
         @Override
         public void write(BufferedOutputStream out) throws IOException {
+            out.write("( block ".getBytes());
+            if (getName() != null) {
+                out.write(getName().getBytes());
+            }
+            out.write(" ".getBytes());
+            if (getExprs() != null) {
+                for (Expr e : getExprs()) {
+                    e.write(out);
+                    out.write(" ".getBytes());
+                }
+            }
+            out.write(")".getBytes());
 
         }
 
@@ -261,7 +273,37 @@ public interface Expr extends FunctionElement {
         }
 
         @Override
-        public void write(BufferedOutputStream out) throws IOException {
+        public void write(BufferedOutputStream out) throws IOException {//TODO: Fix this up so it looks better.
+            out.write("( if ".getBytes());
+            if (getCondition() != null) {
+                getCondition().write(out);
+                out.write("\n".getBytes());
+            }
+            out.write("( then".getBytes());
+            if (getThenLabel() != null) {
+
+            }
+            if (getThenExprs() != null) {
+                for (Expr expr: getThenExprs()) {
+                    out.write("\n".getBytes());
+                    expr.write(out);
+                }
+                out.write(" )\n".getBytes());
+            }
+            if (getElseExprs() != null) {
+                out.write("( else".getBytes());
+            }
+            if (getElseLabel() != null) {
+
+            }
+            if (getElseExprs() != null) {
+                for (Expr expr: getElseExprs()) {
+                    out.write("\n".getBytes());
+                    expr.write(out);
+                }
+                out.write(" )\n".getBytes());
+            }
+            out.write(")".getBytes());
         }
 
         @Override

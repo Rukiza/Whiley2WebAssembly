@@ -1,8 +1,5 @@
 package testing;
 
-import com.eclipsesource.v8.V8;
-import com.sun.tools.javac.util.List;
-import junit.framework.Assert;
 import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
