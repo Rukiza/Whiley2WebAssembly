@@ -348,8 +348,13 @@ public class WasmFileWriter {
     private Expr write(Codes.ArrayGenerator c) {
         List<Expr> exprs = new ArrayList<>();
 
+//        exprs.add(createBaseAddressInit());
+//        exprs.add(createPointerAssignment(b.target(0), getMetaType(b.type(0))));
+//        exprs.add(createBaseAddressAssignment((b.operands().length + 1) * 8));
+//        exprs.add(createConstructLengthAssignment(b.operands().length, getRecordMetaType(b.type(0)), b.target(0)));
         //Follow normal array creation procedure
         exprs.add(createBaseAddressInit());
+        System.out.println("Array Type :" + c.type(0));
         exprs.add(createPointerAssignment(c.target(0), getMetaType(c.type(0))));
         //May need modification as the old ones know there length
         exprs.add(createBaseAddressAssignment(
@@ -375,16 +380,21 @@ public class WasmFileWriter {
                         )
                 )
         ));
+        System.out.println("Length operand: "+c.operand(1));
+        System.out.println("Type "+getMetaType(c.type(0).element()));
+        System.out.println(c.operands().length);
+//        exprs.add(createConstructLengthAssignment(
+//                2,
+//                17,
+//                c.target(0)
+//        ));
+
         exprs.add(createConstructLengthAssignment(
                 factory.createGetLocal(
                         factory.createVar(
                                 "$" + c.operand(1)
                         )
                 ),
-//                factory.createConst(
-//                        factory.createExprType(Expr.INT),
-//                        factory.createValue(0)
-//                ),
                 factory.createConst(
                         factory.createExprType(Expr.INT),
                         factory.createValue(
@@ -393,7 +403,7 @@ public class WasmFileWriter {
                 ),
                 factory.createGetLocal(
                         factory.createVar(
-                                c.target(0)
+                                "$"+c.target(0)
                         )
                 )
         ));
@@ -580,7 +590,7 @@ public class WasmFileWriter {
 
     //TODO: Keep mostly the same, change how local varables are loaded if i choose to store references in the array.
     private Expr write(Codes.Update c) {
-        //System.out.println(c);
+        System.out.println(c);
         if (isArray(c.type(0))) {
             return writeArrayUpdate(c);
         } else {
@@ -593,6 +603,13 @@ public class WasmFileWriter {
      * Writes the array version of update.
      */
     private Expr writeArrayUpdate(Codes.Update c) {
+        System.out.println(c.fields);
+        System.out.println(c.operand(0));
+        System.out.println(c.rhs());
+        System.out.println(c.level());
+        for (int j = 0; j < c.keys().length; j++) {
+            System.out.println(c.key(j));
+        }
         return factory.createStore(
                 factory.createExprType(Expr.INT),
                 null,
@@ -630,6 +647,13 @@ public class WasmFileWriter {
     }
 
     private Expr writeRecordUpdate(Codes.Update c) {
+        System.out.println(c.fields);
+        System.out.println(c.operand(0));
+        System.out.println(c.rhs());
+        System.out.println(c.level());
+        for (int j = 0; j < c.keys().length; j++) {
+            System.out.println(c.key(j));
+        }
         List<Expr> exprs = new ArrayList<>();
 
         int level = getFieldLevel((Type.EffectiveRecord) c.afterType, c.fields.get(0));
@@ -686,6 +710,9 @@ public class WasmFileWriter {
     //TODO: Same problem with refrencing as update, need to change how this is done.
     private List<Expr> write(Codes.IndexOf c) {
         List<Expr> exprs = new ArrayList<>();
+
+//        System.out.println(c.operand(0));
+//        System.out.println(c.type(0).element());
 
         exprs.add(
                 factory.createSetLocal(
@@ -1131,7 +1158,8 @@ public class WasmFileWriter {
         return factory.createIf(
                 factory.createRelOp(
                         factory.createExprType(Expr.INT),
-                        operation,
+                        //operation,
+                        Expr.EQ,
                         factory.createLoad(
                                 factory.createExprType(Expr.INT),
                                 null,
@@ -1336,6 +1364,11 @@ public class WasmFileWriter {
         then.add(creatingVar);
         then.add(loop);
 
+
+        cases.add(
+                createArrayIfCase(getOp(c.opcode()), c.target, c.operand(0), c.operand(1), then)
+        );
+       /*
         cases.add(
                 factory.createIf(
                         factory.createRelOp(
@@ -1366,6 +1399,7 @@ public class WasmFileWriter {
                         null
                 )
         );
+       */
 
         return factory.createBlock(null, cases);
 
@@ -1491,7 +1525,9 @@ public class WasmFileWriter {
 //			System.out.println("Should have made it here.");
             return factory.createExprType(Expr.INT);
         } else if (type instanceof Type.Array) {
-            return factory.createExprType(INT);
+            return factory.createExprType(Expr.INT);
+        //} else if (type instanceof Type.Null) {
+            //return factory.createExprType(Expr.INT);
         }
         //Todo throw error
 		System.out.println(type);
@@ -1507,6 +1543,8 @@ public class WasmFileWriter {
             } else {
                 return factory.createValue(FALSE);
             }
+        //} if (constant.type() instanceof Type.Null) {
+            //return factory.createValue(0);
         }
         System.out.println(constant);
         //Todo throw error
@@ -2589,7 +2627,8 @@ public class WasmFileWriter {
                                 factory.createConst(
                                         factory.createExprType(Expr.INT),
                                         factory.createValue(BASE_MEMORY_LOCATION)
-                                ), 0
+                                ),
+                                0
                         ),
                         distanceFromOldToNew
                 )
