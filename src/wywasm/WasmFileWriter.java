@@ -297,6 +297,7 @@ public class WasmFileWriter {
                     continue;
                 }
                 System.out.println("Loop opcode: "+bytecode.opcode());
+                for (Object j: ((Codes.Loop) bytecode).modifiedOperands) {System.out.println(j);}
                 //write((Codes.Assert) bytecode).forEach(exprs::add);
                 codes.remove(bytecode);
                 System.out.println(((CodeBlock) bytecode));
@@ -1458,7 +1459,8 @@ public class WasmFileWriter {
         //Should include alot of code form new array.
         //Should rather than using store loaded vars it should store constants
         //But other than that the same code.
-        if (c.constant.type().equals(Type.Array(Type.T_INT, true))) {
+        if (c.constant.type() instanceof Type.Array) {
+            //if (c.constant.type().equals(Type.Array(Type.T_INT, true))) {
             return writeConstantArray(c);
         }
 //		output.println(c.constant.type());
@@ -1547,6 +1549,7 @@ public class WasmFileWriter {
             //return factory.createValue(0);
         }
         System.out.println(constant);
+        System.out.println(constant.type());
         //Todo throw error
         throw new Error("Some error to be decided later.");
     }
