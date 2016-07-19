@@ -5,6 +5,7 @@ import java.util.*;
 
 import ast.*;
 import util.WastFactory;
+import wycc.util.Pair;
 import wyil.io.WyilFileReader;
 import wyil.lang.*;
 
@@ -296,11 +297,11 @@ public class WasmFileWriter {
                 if (bytecode.opcode() == Codes.Quantify.OPCODE_quantify){
                     continue;
                 }
-                System.out.println("Loop opcode: "+bytecode.opcode());
-                for (Object j: ((Codes.Loop) bytecode).modifiedOperands) {System.out.println(j);}
+//                System.out.println("Loop opcode: "+bytecode.opcode());
+//                for (Object j: ((Codes.Loop) bytecode).modifiedOperands) {System.out.println(j);}
                 //write((Codes.Assert) bytecode).forEach(exprs::add);
                 codes.remove(bytecode);
-                System.out.println(((CodeBlock) bytecode));
+//                System.out.println(((CodeBlock) bytecode));
                 Codes.Loop a = (Codes.Loop) bytecode;
                 String label = getLabel();
                 codes.add(i, Codes.Label(label));
@@ -324,6 +325,7 @@ public class WasmFileWriter {
                     exprs.add(expr);
                 }
             } else if (bytecode instanceof Codes.Switch) {
+                exprs.add(write((Codes.Switch) bytecode));
             } else if (bytecode instanceof Codes.UnaryOperator) {
                 exprs.add(write((Codes.UnaryOperator) bytecode));
             } else if (bytecode instanceof Codes.Update) {
@@ -344,6 +346,65 @@ public class WasmFileWriter {
 
         }
         return cases;
+    }
+
+    private Expr write(Codes.Switch c) {
+        List<Expr> exprs = new ArrayList<>();
+
+        for (Pair<Constant, String> b: c.branches){
+            exprs.add(createSwitchBranch(b,c.operand(0)));
+        }
+
+        exprs.add(createSwitchBranch(c.defaultTarget));
+
+        return factory.createBlock(null, exprs);
+    }
+
+    private Expr createSwitchBranch(Pair<Constant, String> branch, int operand) {
+        List<Expr> then = new ArrayList<>();
+
+        then.add(createSwitchBranch(branch.second()));
+
+        return factory.createIf(
+                factory.createRelOp(
+                        factory.createExprType(Expr.INT),
+                        Expr.EQ,
+                        factory.createGetLocal(
+                                factory.createVar("$"+operand)
+                        ),
+                        factory.createConst(
+                                writeConstantType((branch.first()).type()),
+                                writeConstantValue(branch.first())
+                        )
+                ),
+                null,
+                then,
+                null,
+                null
+        );
+    }
+
+    private Expr createSwitchBranch(String label) {
+        List<Expr> exprs = new ArrayList<>();
+
+        exprs.add(
+                factory.createSetLocal(
+                        factory.createVar(PC),
+                        factory.createConst(
+                                factory.createExprType(Expr.INT),
+                                factory.createValue(labelMap.get(label))
+                        )
+                )
+        );
+
+        exprs.add(
+                factory.createBr(
+                        factory.createVar(BLOCK_NAME),
+                        null
+                )
+        );
+
+        return factory.createBlock(null, exprs);
     }
 
     private Expr write(Codes.ArrayGenerator c) {
@@ -608,6 +669,17 @@ public class WasmFileWriter {
         System.out.println(c.operand(0));
         System.out.println(c.rhs());
         System.out.println(c.level());
+        Iterator<Codes.LVal> iterator = c.iterator();
+        while (iterator.hasNext()) {
+            Codes.LVal v = iterator.next();
+            System.out.println(v.rawType());
+            if (v instanceof Codes.ArrayLVal) {
+                Codes.ArrayLVal av = (Codes.ArrayLVal) v;
+                System.out.println(av.indexOperand);
+                System.out.println(av.rawType().element());
+            }
+            System.out.println(v.getClass().toGenericString());
+        }
         for (int j = 0; j < c.keys().length; j++) {
             System.out.println(c.key(j));
         }
@@ -652,6 +724,10 @@ public class WasmFileWriter {
         System.out.println(c.operand(0));
         System.out.println(c.rhs());
         System.out.println(c.level());
+        Iterator<Codes.LVal> iterator = c.iterator();
+        while (iterator.hasNext()) {
+            System.out.println(iterator.next());
+        }
         for (int j = 0; j < c.keys().length; j++) {
             System.out.println(c.key(j));
         }
@@ -1469,7 +1545,7 @@ public class WasmFileWriter {
                 factory.createConst(writeConstantType(c.constant.type()), writeConstantValue(c.constant)));
     }
 
-    //TODO: Same as above funtion.
+    //TODO: Same as above function.
     private Expr writeConstantArray(Codes.Const c) {
         List<Expr> exprs = new ArrayList<>();
 
@@ -1530,6 +1606,8 @@ public class WasmFileWriter {
             return factory.createExprType(Expr.INT);
         //} else if (type instanceof Type.Null) {
             //return factory.createExprType(Expr.INT);
+        } else if (type instanceof Type.Byte) {
+            return factory.createExprType(Expr.INT);
         }
         //Todo throw error
 		System.out.println(type);
@@ -1547,6 +1625,9 @@ public class WasmFileWriter {
             }
         //} if (constant.type() instanceof Type.Null) {
             //return factory.createValue(0);
+//        } if (constant.type() instanceof Type.Byte) {
+//            System.out.println(constant.toString());
+//            return factory.createValue(0);
         }
         System.out.println(constant);
         System.out.println(constant.type());
