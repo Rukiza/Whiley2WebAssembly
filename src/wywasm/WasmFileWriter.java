@@ -17,15 +17,9 @@ public class WasmFileWriter {
     //Bool values.
     private static final int TRUE = 1;
     private static final int FALSE = 0;
-
-    //Functions TODO: remove if un-needed
-    private Map<String, List<Type>> paramMap = new HashMap<>();
-    private Map<String, List<Type>> returnMap = new HashMap<>();
-
     //TYPES
     private static final String INT = "i32";
     private static final String BOOL = "i32";
-
     //OPCODES
     private static final String ADD = "add";
     private static final String SUB = "sub";
@@ -35,25 +29,22 @@ public class WasmFileWriter {
     private static final String BITWISE_XOR = "xor";
     private static final String BITWISE_AND = "and";
     private static final String REM = "rem_s";//TODO: Change when code changes.
-
     //OPCODE EXTENSIONS
     private static final String SIGNED = "_s";
     private static final String UNSIGNED = "_u";
     private static final String NO_EXTENTION = "";
-
     private static final String PC = "$pc";
     private static final String BLOCK_NAME = "$START";
     private static final String BASE_LABEL = "$BASE";
-
     private static final Integer BASE_MEMORY_LOCATION = 0;
     private static final Integer BASE_MEMORY_VALUE = 4;
     private static final Integer BASE_MEMORY_INCORRECT_VALUE = 0;
-
     private static final String DEFAULT_LABEL_NAME = "WASMLABEL";
     private static final String DEFAULT_VAR_NAME = "$WASMVAR";
-
     private static final int START_MEMORY = 4096;
-
+    //Functions TODO: remove if un-needed
+    private Map<String, List<Type>> paramMap = new HashMap<>();
+    private Map<String, List<Type>> returnMap = new HashMap<>();
     private PrintStream output;
     private WastFactory factory;
     private Map<String, Integer> typeMap;
@@ -70,6 +61,17 @@ public class WasmFileWriter {
         this.output = output;
         this.factory = factory;
         this.typeMap = new HashMap<>();
+    }
+
+    public static void main(String[] args) {
+        try {
+            // First, read the input file to generate WyilFile instance
+            WyilFile file = new WyilFileReader(args[0]).read();
+            // Second, pass WyilFile into wasm file writer
+            new WasmFileWriter(System.out, new WastFactory.SWastFactory()).write(file);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public void write(WyilFile file) throws IOException {
@@ -294,7 +296,7 @@ public class WasmFileWriter {
             } else if (bytecode instanceof Codes.LengthOf) {
                 exprs.add(write((Codes.LengthOf) bytecode));
             } else if (bytecode instanceof Codes.Loop) {
-                if (bytecode.opcode() == Codes.Quantify.OPCODE_quantify){
+                if (bytecode.opcode() == Codes.Quantify.OPCODE_quantify) {
                     continue;
                 }
 //                System.out.println("Loop opcode: "+bytecode.opcode());
@@ -351,8 +353,8 @@ public class WasmFileWriter {
     private Expr write(Codes.Switch c) {
         List<Expr> exprs = new ArrayList<>();
 
-        for (Pair<Constant, String> b: c.branches){
-            exprs.add(createSwitchBranch(b,c.operand(0)));
+        for (Pair<Constant, String> b : c.branches) {
+            exprs.add(createSwitchBranch(b, c.operand(0)));
         }
 
         exprs.add(createSwitchBranch(c.defaultTarget));
@@ -370,7 +372,7 @@ public class WasmFileWriter {
                         factory.createExprType(Expr.INT),
                         Expr.EQ,
                         factory.createGetLocal(
-                                factory.createVar("$"+operand)
+                                factory.createVar("$" + operand)
                         ),
                         factory.createConst(
                                 writeConstantType((branch.first()).type()),
@@ -442,8 +444,8 @@ public class WasmFileWriter {
                         )
                 )
         ));
-        System.out.println("Length operand: "+c.operand(1));
-        System.out.println("Type "+getMetaType(c.type(0).element()));
+        System.out.println("Length operand: " + c.operand(1));
+        System.out.println("Type " + getMetaType(c.type(0).element()));
         System.out.println(c.operands().length);
 //        exprs.add(createConstructLengthAssignment(
 //                2,
@@ -465,7 +467,7 @@ public class WasmFileWriter {
                 ),
                 factory.createGetLocal(
                         factory.createVar(
-                                "$"+c.target(0)
+                                "$" + c.target(0)
                         )
                 )
         ));
@@ -500,7 +502,7 @@ public class WasmFileWriter {
                                 factory.createVar(loopVar)
                         ),
                         factory.createGetLocal(
-                                factory.createVar("$"+c.operand(1))
+                                factory.createVar("$" + c.operand(1))
                         )
                 ),
                 createMemoryValueAndTypeStore( //Body of the function.
@@ -508,7 +510,7 @@ public class WasmFileWriter {
                                 factory.createExprType(Expr.INT),
                                 Expr.add,
                                 factory.createGetLocal(
-                                        factory.createVar("$"+c.target(0))
+                                        factory.createVar("$" + c.target(0))
                                 ),
                                 factory.createBinOp(
                                         factory.createExprType(Expr.INT),
@@ -524,10 +526,10 @@ public class WasmFileWriter {
                         ),
                         0, //Offset - 0 becasue the location is only knowen at runtime.
                         factory.createGetLocal( //Value to be stored.
-                                factory.createVar("$"+c.operand(0))
+                                factory.createVar("$" + c.operand(0))
                         ),
                         factory.createGetLocal( //Type of the value to be stored.
-                                factory.createVar("$"+TYPE_VAR_NAME+c.operand(0))
+                                factory.createVar("$" + TYPE_VAR_NAME + c.operand(0))
                         )
                 ),
                 factory.createSetLocal( //Increment of the value in memory.
@@ -650,6 +652,128 @@ public class WasmFileWriter {
         }
     }
 
+    private Expr write(Codes.Update c) {
+        Pair<Expr, Integer> locationAndOffset = writeBaseUpdate(c, c.iterator());
+        System.out.println(locationAndOffset);
+        int operand;
+//        if (isArray(c.type(0))) {
+//            operand = c.operand(1);
+//        } else {
+//            operand = c.operand(0);
+//        }
+        operand = c.operands()[c.operands().length-1];
+        return createStore(
+                locationAndOffset.first(),
+                locationAndOffset.second(),
+                factory.createGetLocal(
+                        factory.createVar("$"+operand)
+                )
+        );
+
+    }
+
+    private Pair<Expr, Integer> writeBaseUpdate(Codes.Update c, Iterator<Codes.LVal> iterator) {
+        Pair<Expr, Integer> locationAndOffset = new Pair<>(null, 0);
+        System.out.println("Should be running this fucntion");
+        while (iterator.hasNext()) {
+            Codes.LVal v = iterator.next();
+            if (v instanceof Codes.ArrayLVal) {
+                Codes.ArrayLVal av = (Codes.ArrayLVal) v;
+                locationAndOffset = writeArrayUpdate(c, av, locationAndOffset.first());
+            } else {
+                Codes.RecordLVal rv = (Codes.RecordLVal) v;
+                locationAndOffset = writeRecordUpdate(c, rv, locationAndOffset.first());
+            }
+        }
+        return locationAndOffset;
+    }
+
+    private Pair<Expr, Integer> writeArrayUpdate(Codes.Update c, Codes.ArrayLVal av, Expr location) {
+        // Base case
+
+        System.out.println(c.key(0));
+        System.out.println(av.indexOperand);
+        if (location == null) {
+            location = factory.createGetLocal(
+                    factory.createVar("$" + c.target(0))
+            );
+        } else  {
+            location = createLoad(
+                    location,
+                    0
+            );
+        }
+
+        return new Pair<>(
+                factory.createBinOp(
+                        factory.createExprType(Expr.INT),
+                        Expr.add,
+                        location,
+                        factory.createBinOp(
+                                factory.createExprType(Expr.INT),
+                                Expr.mul,
+                                factory.createConst(
+                                        factory.createExprType(Expr.INT),
+                                        factory.createValue(8)
+                                ),
+                                factory.createBinOp(
+                                        factory.createExprType(Expr.INT),
+                                        Expr.add,
+                                        factory.createConst(
+                                                factory.createExprType(Expr.INT),
+                                                factory.createValue(1)
+                                        ),
+                                        factory.createGetLocal(
+                                                factory.createVar("$" + av.indexOperand)
+                                        )
+                                )
+                        )
+                ),
+                0
+        );
+    }
+
+    private Pair<Expr, Integer> writeRecordUpdate(Codes.Update c, Codes.RecordLVal rv, Expr location) {
+        int level = getFieldLevel(rv.rawType(), rv.field);
+        System.out.println(rv.rawType());
+        System.out.println(rv.field);
+        System.out.println(level);
+
+        if (location == null) {
+            location = factory.createGetLocal(
+                    factory.createVar("$" + c.target(0))
+            );
+        } else  {
+            location = createLoad(
+                    location,
+                    0
+            );
+        }
+
+        return new Pair<>(
+                factory.createBinOp(
+                        factory.createExprType(Expr.INT),
+                        Expr.add,
+                        location,
+                        factory.createBinOp(
+                                factory.createExprType(Expr.INT),
+                                Expr.mul,
+                                factory.createConst(
+                                        factory.createExprType(Expr.INT),
+                                        factory.createValue(8)
+                                ),
+                                factory.createConst(
+                                        factory.createExprType(Expr.INT),
+                                        factory.createValue(level + 1)
+                                )
+                        )
+                ),
+                0
+        );
+    }
+
+
+/*
     //TODO: Keep mostly the same, change how local varables are loaded if i choose to store references in the array.
     private Expr write(Codes.Update c) {
         System.out.println(c);
@@ -661,9 +785,7 @@ public class WasmFileWriter {
 
     }
 
-    /**
-     * Writes the array version of update.
-     */
+
     private Expr writeArrayUpdate(Codes.Update c) {
         System.out.println(c.fields);
         System.out.println(c.operand(0));
@@ -766,6 +888,7 @@ public class WasmFileWriter {
 
         return factory.createBlock(null, exprs); // TODO: Make a update for this.
     }
+*/
 
 
     //TODO: argument is going to be moved allong 4 in the allignment maby 8 to store current type of elements
@@ -909,7 +1032,6 @@ public class WasmFileWriter {
 
         return exprs;
     }
-
 
     //TODO: Will need to assign the stored values, rather than using local vars.
     private Expr write(Codes.Assign c) {
@@ -1177,13 +1299,13 @@ public class WasmFileWriter {
                                         Expr.add,
                                         createLoad(
                                                 factory.createGetLocal(
-                                                        factory.createVar("$"+ c.operand(0))
+                                                        factory.createVar("$" + c.operand(0))
                                                 ),
                                                 0
                                         ),
                                         createLoad(
                                                 factory.createGetLocal(
-                                                        factory.createVar("$"+ c.operand(0))
+                                                        factory.createVar("$" + c.operand(0))
                                                 ),
                                                 0
                                         )
@@ -1243,7 +1365,7 @@ public class WasmFileWriter {
                                 null,
                                 null,
                                 factory.createGetLocal(
-                                        factory.createVar("$"+operandOne)
+                                        factory.createVar("$" + operandOne)
                                 )
                         ),
                         factory.createLoad(
@@ -1252,7 +1374,7 @@ public class WasmFileWriter {
                                 null,
                                 null,
                                 factory.createGetLocal(
-                                        factory.createVar("$"+operandTwo)
+                                        factory.createVar("$" + operandTwo)
                                 )
                         )
                 ),
@@ -1604,13 +1726,13 @@ public class WasmFileWriter {
             return factory.createExprType(Expr.INT);
         } else if (type instanceof Type.Array) {
             return factory.createExprType(Expr.INT);
-        //} else if (type instanceof Type.Null) {
+            //} else if (type instanceof Type.Null) {
             //return factory.createExprType(Expr.INT);
         } else if (type instanceof Type.Byte) {
             return factory.createExprType(Expr.INT);
         }
         //Todo throw error
-		System.out.println(type);
+        System.out.println(type);
         throw new Error("Some error to be decided later.");
     }
 
@@ -1623,7 +1745,7 @@ public class WasmFileWriter {
             } else {
                 return factory.createValue(FALSE);
             }
-        //} if (constant.type() instanceof Type.Null) {
+            //} if (constant.type() instanceof Type.Null) {
             //return factory.createValue(0);
 //        } if (constant.type() instanceof Type.Byte) {
 //            System.out.println(constant.toString());
@@ -1940,7 +2062,6 @@ public class WasmFileWriter {
         //TODO:Work with all the types - assumption first is target type possible get type method.
         return locals;
     }
-
 
     private Expr createMemoryCopy(int location, int placement) { //TODO: Work out the parameters and there types.
         List<Expr> exprs = new ArrayList<>();
@@ -2868,7 +2989,6 @@ public class WasmFileWriter {
         return factory.createBlock(null, exprs);
     }
 
-
     private Expr createCompareTypes(Expr typeOne, Expr typeTwo) {
         return factory.createRelOp(
                 factory.createExprType(Expr.INT),
@@ -2969,7 +3089,6 @@ public class WasmFileWriter {
 
         return fields.indexOf(field);
     }
-
 
     private Integer getMetaType(Type t) {
         if (isArray(t)) {
@@ -3081,16 +3200,5 @@ public class WasmFileWriter {
     private String getVar() {
         String var = DEFAULT_VAR_NAME + (wasmVarNumber++);
         return var;
-    }
-
-    public static void main(String[] args) {
-        try {
-            // First, read the input file to generate WyilFile instance
-            WyilFile file = new WyilFileReader(args[0]).read();
-            // Second, pass WyilFile into wasm file writer
-            new WasmFileWriter(System.out, new WastFactory.SWastFactory()).write(file);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 }
