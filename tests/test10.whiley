@@ -1,4 +1,5 @@
 method addOne():
+
     bool[][] ls = [[true, false],[false,true],[false,false], [true, true]]
     assert ls[0][0] == true
     assert ls[0][1] == false
@@ -22,5 +23,8 @@ method addOne():
     assert ls2[0] == [true,false]
     assert ls[0] == [false, false]
 
-
+    int[] ls3 = [0;0]
+    int[] ls4 = ls3
+    {int h, int j}[][] v1 = [[{h: 0, j:10};10];300]
+    {int h, int j}[][] v2 = v1
 

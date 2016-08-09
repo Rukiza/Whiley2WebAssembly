@@ -2301,19 +2301,19 @@ public class WasmFileWriter {
                                         null,
                                         factory.createConst(factory.createExprType(Expr.INT), factory.createValue(BASE_MEMORY_LOCATION))
                                 ),
-                                factory.createBinOp(
-                                        factory.createExprType(Expr.INT),
-                                        Expr.add,
-                                        factory.createLoad(
-                                                factory.createExprType(Expr.INT),
-                                                null,
-                                                null,
-                                                null,
-                                                factory.createConst(
-                                                        factory.createExprType(Expr.INT),
-                                                        factory.createValue(BASE_MEMORY_LOCATION)
-                                                )
-                                        ),
+//                                factory.createBinOp(
+//                                        factory.createExprType(Expr.INT),
+//                                        Expr.add,
+//                                        factory.createLoad(
+//                                                factory.createExprType(Expr.INT),
+//                                                null,
+//                                                null,
+//                                                null,
+//                                                factory.createConst(
+//                                                        factory.createExprType(Expr.INT),
+//                                                        factory.createValue(BASE_MEMORY_LOCATION)
+//                                                )
+//                                        ),
                                         factory.createBinOp(
                                                 factory.createExprType(Expr.INT),
                                                 Expr.mul,
@@ -2331,7 +2331,7 @@ public class WasmFileWriter {
                                                                 factory.createExprType(Expr.INT),
                                                                 factory.createValue(1)
                                                         )
-                                                )
+//                                                )
                                         )
                                 )
                         )
@@ -2708,13 +2708,35 @@ public class WasmFileWriter {
         loopContents.add(increment);
         loopContents.add(loopContinue);
 
-        // return the pointer value.
+        //Create entry if
+        List<Expr> temp = new ArrayList<>();
 
-        exprs.add(
+
+        // return the pointer value.
+        temp.add(
                 factory.createLoop(
                         "$loop",
                         null,
                         loopContents
+                )
+        );
+
+        exprs.add(
+                factory.createIf(
+                        factory.createRelOp(
+                                factory.createExprType(Expr.INT),
+                                Expr.LE,
+                                factory.createGetLocal(
+                                        factory.createVar("$inc")
+                                ),
+                                factory.createGetLocal(
+                                        factory.createVar("$length")
+                                )
+                        ),
+                        null,
+                        temp,
+                        null,
+                        null
                 )
         );
 
